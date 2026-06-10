@@ -10,11 +10,65 @@ service cloud.firestore {
         ];
     }
 
+    function isAllowedEmail(email) {
+      return email in [
+        "theuspsg@gmail.com",
+        "aly0ciah@gmail.com"
+      ];
+    }
+
+    function isValidFavoriteBy(favoriteBy) {
+      return favoriteBy is map
+        && favoriteBy.keys().hasOnly(["matheus", "aly"])
+        && (!favoriteBy.keys().hasAny(["matheus"]) || favoriteBy.matheus is bool)
+        && (!favoriteBy.keys().hasAny(["aly"]) || favoriteBy.aly is bool);
+    }
+
+    function isValidDeleteConfirm(confirm) {
+      return confirm is map
+        && confirm.keys().hasOnly([
+          "itemId",
+          "itemName",
+          "requestedBy",
+          "requestedByEmail"
+        ])
+        && confirm.itemId is string
+        && confirm.itemName is string
+        && confirm.itemName.size() <= 120
+        && confirm.requestedBy is string
+        && confirm.requestedBy.size() <= 40
+        && confirm.requestedByEmail is string
+        && isAllowedEmail(confirm.requestedByEmail);
+    }
+
+    function isValidLinkDeleteConfirm(confirm) {
+      return confirm is map
+        && confirm.keys().hasOnly([
+          "itemId",
+          "itemName",
+          "linkId",
+          "linkTitle",
+          "requestedBy",
+          "requestedByEmail"
+        ])
+        && confirm.itemId is string
+        && confirm.itemName is string
+        && confirm.itemName.size() <= 120
+        && confirm.linkId is string
+        && confirm.linkTitle is string
+        && confirm.linkTitle.size() <= 240
+        && confirm.requestedBy is string
+        && confirm.requestedBy.size() <= 40
+        && confirm.requestedByEmail is string
+        && isAllowedEmail(confirm.requestedByEmail);
+    }
+
     function isValidItem() {
       return request.resource.data.keys().hasOnly([
           "name",
           "value",
           "categories",
+          "favoriteBy",
           "checked",
           "links",
           "createdAt",
@@ -29,16 +83,27 @@ service cloud.firestore {
         && request.resource.data.checked is bool
         && request.resource.data.categories is list
         && request.resource.data.categories.size() <= 20
+        && (
+          !request.resource.data.keys().hasAny(["favoriteBy"])
+          || isValidFavoriteBy(request.resource.data.favoriteBy)
+        )
         && request.resource.data.links is list
         && request.resource.data.links.size() <= 100
-        && request.resource.data.createdAt is timestamp
-        && request.resource.data.updatedAt is timestamp;
+        && (
+          !request.resource.data.keys().hasAny(["createdAt"])
+          || request.resource.data.createdAt is timestamp
+        )
+        && (
+          !request.resource.data.keys().hasAny(["updatedAt"])
+          || request.resource.data.updatedAt is timestamp
+        );
     }
 
     function isValidFilters() {
       return request.resource.data.keys().hasOnly([
           "searchTerm",
           "selectedCategories",
+          "favoriteFilters",
           "favoritesOnly",
           "purchaseFilter",
           "updatedAt",
@@ -48,7 +113,17 @@ service cloud.firestore {
         && request.resource.data.searchTerm.size() <= 120
         && request.resource.data.selectedCategories is list
         && request.resource.data.selectedCategories.size() <= 50
-        && request.resource.data.favoritesOnly is bool
+        && (
+          !request.resource.data.keys().hasAny(["favoriteFilters"])
+          || (
+            request.resource.data.favoriteFilters is list
+            && request.resource.data.favoriteFilters.size() <= 2
+          )
+        )
+        && (
+          !request.resource.data.keys().hasAny(["favoritesOnly"])
+          || request.resource.data.favoritesOnly is bool
+        )
         && request.resource.data.purchaseFilter in ["all", "bought", "pending"]
         && request.resource.data.updatedAt is timestamp
         && request.resource.data.updatedBy is string;
@@ -58,30 +133,36 @@ service cloud.firestore {
       return request.resource.data.keys().hasOnly([
           "openItemId",
           "deleteConfirm",
+          "linkDeleteConfirm",
           "updatedAt",
           "updatedBy"
         ])
-        && (request.resource.data.openItemId == null || request.resource.data.openItemId is string)
         && (
-          request.resource.data.deleteConfirm == null
-          || (
-            request.resource.data.deleteConfirm is map
-            && request.resource.data.deleteConfirm.keys().hasOnly([
-              "itemId",
-              "itemName",
-              "requestedBy",
-              "requestedByEmail"
-            ])
-            && request.resource.data.deleteConfirm.itemId is string
-            && request.resource.data.deleteConfirm.itemName is string
-            && request.resource.data.deleteConfirm.itemName.size() <= 120
-            && request.resource.data.deleteConfirm.requestedBy is string
-            && request.resource.data.deleteConfirm.requestedBy.size() <= 40
-            && request.resource.data.deleteConfirm.requestedByEmail == request.auth.token.email
-          )
+          !request.resource.data.keys().hasAny(["openItemId"])
+          || request.resource.data.openItemId == null
+          || request.resource.data.openItemId is string
+        )
+        && (
+          !request.resource.data.keys().hasAny(["deleteConfirm"])
+          || request.resource.data.deleteConfirm == null
+          || isValidDeleteConfirm(request.resource.data.deleteConfirm)
+        )
+        && (
+          !request.resource.data.keys().hasAny(["linkDeleteConfirm"])
+          || request.resource.data.linkDeleteConfirm == null
+          || isValidLinkDeleteConfirm(request.resource.data.linkDeleteConfirm)
         )
         && request.resource.data.updatedAt is timestamp
         && request.resource.data.updatedBy is string;
+    }
+
+    function isValidPresenceActivity(activity) {
+      return activity is map
+        && activity.keys().hasOnly(["itemId", "text"])
+        && activity.itemId is string
+        && activity.itemId.size() <= 120
+        && activity.text is string
+        && activity.text.size() <= 120;
     }
 
     function isValidPresence() {
@@ -96,6 +177,7 @@ service cloud.firestore {
           "x",
           "y",
           "draftItem",
+          "activity",
           "updatedAt"
         ])
         && request.resource.data.uid == request.auth.uid
@@ -123,6 +205,10 @@ service cloud.firestore {
         && request.resource.data.draftItem.value.size() <= 40
         && request.resource.data.draftItem.categories is list
         && request.resource.data.draftItem.categories.size() <= 20
+        && (
+          !request.resource.data.keys().hasAny(["activity"])
+          || isValidPresenceActivity(request.resource.data.activity)
+        )
         && request.resource.data.updatedAt is timestamp;
     }
 

@@ -357,10 +357,39 @@ input:focus {
   border-color: #2f6f60;
 }
 
-.icon-button.favorite.active {
-  color: #8a6500;
-  background: #fff4c5;
-  border-color: #dec36c;
+.favorite-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.favorite-controls .icon-button {
+  width: 36px;
+  min-height: 36px;
+  flex: 0 0 36px;
+}
+
+.icon-button.favorite {
+  color: #7a7468;
+}
+
+.icon-button.favorite:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.icon-button.favorite-matheus.active,
+.favorite-filter-button.matheus.active {
+  color: #0f5edc;
+  background: #eaf2ff;
+  border-color: #78a9ff;
+}
+
+.icon-button.favorite-aly.active,
+.favorite-filter-button.aly.active {
+  color: #c41b7f;
+  background: #ffe8f4;
+  border-color: #ff8fcb;
 }
 
 .icon-button.danger:hover {
@@ -379,6 +408,7 @@ input:focus {
 .item-summary > *,
 .link-row > *,
 .status-filter > *,
+.favorite-filter > *,
 .category-filter > * {
   min-width: 0;
 }
@@ -525,6 +555,12 @@ input:focus {
   gap: 8px;
 }
 
+.favorite-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .presence-layer {
   position: fixed;
   inset: 0;
@@ -581,6 +617,14 @@ input:focus {
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.78);
   overflow: hidden;
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.item-row.has-activity {
+  border-color: var(--activity-color);
+  box-shadow: 0 0 0 2px var(--activity-color);
 }
 
 .item-row.is-checked .item-name-input {
@@ -590,7 +634,7 @@ input:focus {
 
 .item-summary {
   display: grid;
-  grid-template-columns: 42px minmax(160px, 1fr) minmax(120px, 150px) auto 42px 42px;
+  grid-template-columns: 42px minmax(160px, 1fr) minmax(120px, 150px) auto auto 42px 42px;
   min-height: 64px;
   gap: 10px;
   padding: 10px;
@@ -619,6 +663,10 @@ input:focus {
   flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
+}
+
+.item-favorite-controls {
+  justify-self: end;
 }
 
 .item-meta span {
@@ -665,6 +713,27 @@ input:focus {
   align-items: center;
   gap: 8px;
   flex: 0 0 auto;
+}
+
+.activity-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 12px 10px 64px;
+}
+
+.activity-badge {
+  min-height: 28px;
+  border: 1px solid var(--activity-color);
+  border-radius: 999px;
+  background: #fff;
+  color: #2d2a25;
+  display: inline-flex;
+  align-items: center;
+  box-shadow: inset 4px 0 0 var(--activity-color);
+  font-size: 0.82rem;
+  font-weight: 850;
+  padding: 0 10px 0 14px;
 }
 
 .category-strip {
@@ -784,6 +853,11 @@ input:focus {
   gap: 8px;
 }
 
+.link-row-wrap {
+  display: grid;
+  gap: 8px;
+}
+
 .link-row {
   gap: 8px;
 }
@@ -794,6 +868,12 @@ input:focus {
   display: grid;
   grid-template-columns: minmax(120px, 0.8fr) minmax(150px, 1.25fr) minmax(120px, 1fr);
   gap: 8px;
+}
+
+.link-delete-confirmation {
+  border: 1px solid #ead5d5;
+  border-radius: 8px;
+  margin: 0;
 }
 
 .empty-state,
@@ -873,6 +953,11 @@ input:focus {
     grid-template-columns: 1fr 1fr;
   }
 
+  .favorite-filter {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
   .filter-count {
     text-align: center;
   }
@@ -897,15 +982,42 @@ input:focus {
     grid-template-columns: 42px minmax(0, 1fr) 42px 42px;
   }
 
+  .item-name-input {
+    grid-column: 2 / 3;
+    grid-row: 1;
+  }
+
   .item-value-input {
     grid-column: 2 / -1;
+    grid-row: 2;
     text-align: left;
+  }
+
+  .item-favorite-controls {
+    grid-column: 1 / 3;
+    grid-row: 3;
+    justify-self: start;
   }
 
   .item-meta {
     grid-column: 1 / -1;
+    grid-row: 4;
     order: 5;
     justify-content: flex-start;
+  }
+
+  .item-summary > .icon-button:not(.danger) {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .item-summary > .icon-button.danger {
+    grid-column: 4;
+    grid-row: 1;
+  }
+
+  .activity-badges {
+    padding-left: 10px;
   }
 
   .delete-confirmation {
@@ -924,8 +1036,14 @@ input:focus {
 
   .links-list .link-row {
     display: grid;
-    grid-template-columns: 42px 42px 42px 1fr;
+    grid-template-columns: 1fr 42px 42px;
     align-items: start;
+  }
+
+  .links-list .link-favorite-controls {
+    grid-column: 1;
+    grid-row: 1;
+    justify-self: start;
   }
 
   .links-list .link-fields {

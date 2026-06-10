@@ -46,23 +46,66 @@ const allowedEmails = (import.meta.env.VITE_ALLOWED_EMAILS || '')
 const defaultFilters = {
   searchTerm: '',
   selectedCategories: [],
+  favoriteFilters: [],
   favoritesOnly: false,
   purchaseFilter: 'all',
 };
 
+const favoriteKeys = ['matheus', 'aly'];
+
+const profileByEmail = {
+  'theuspsg@gmail.com': {
+    key: 'matheus',
+    label: 'Matheus',
+    cursorColor: '#f0c419',
+    accentColor: '#2f80ff',
+  },
+  'aly0ciah@gmail.com': {
+    key: 'aly',
+    label: 'Aly',
+    cursorColor: '#ff4fb3',
+    accentColor: '#ff4fb3',
+  },
+};
+
 function getPresenceProfile(email = '') {
   const cleanEmail = email.toLowerCase();
-  if (cleanEmail === 'aly0ciah@gmail.com') {
-    return { color: '#ff4fb3', label: 'Aly' };
-  }
-  return { color: '#f0c419', label: 'Matheus' };
+  const profile = profileByEmail[cleanEmail] || profileByEmail['theuspsg@gmail.com'];
+  return {
+    key: profile.key,
+    color: profile.cursorColor,
+    accentColor: profile.accentColor,
+    label: profile.label,
+  };
+}
+
+function getUserKey(email = '') {
+  return getPresenceProfile(email).key;
+}
+
+function normalizeFavoriteBy(favoriteBy = {}, legacyFavorite = false) {
+  return {
+    matheus: Boolean(favoriteBy?.matheus || legacyFavorite),
+    aly: Boolean(favoriteBy?.aly || legacyFavorite),
+  };
+}
+
+function normalizeFavoriteFilters(filters = []) {
+  return filters.filter((filter) => favoriteKeys.includes(filter));
 }
 
 function normalizeFilters(filters = {}) {
+  const favoriteFilters = normalizeFavoriteFilters(filters.favoriteFilters || []);
   return {
     searchTerm: typeof filters.searchTerm === 'string' ? filters.searchTerm : '',
     selectedCategories: normalizeCategories(filters.selectedCategories || []),
-    favoritesOnly: Boolean(filters.favoritesOnly),
+    favoriteFilters:
+      favoriteFilters.length > 0
+        ? favoriteFilters
+        : Boolean(filters.favoritesOnly)
+          ? favoriteKeys
+          : [],
+    favoritesOnly: false,
     purchaseFilter: ['all', 'bought', 'pending'].includes(filters.purchaseFilter)
       ? filters.purchaseFilter
       : 'all',
@@ -76,6 +119,7 @@ function normalizeLinks(links = []) {
     url: link.url || '',
     note: link.note || '',
     favorite: Boolean(link.favorite),
+    favoriteBy: normalizeFavoriteBy(link.favoriteBy, link.favorite),
   }));
 }
 
@@ -140,10 +184,15 @@ function ChecklistApp() {
   const [filters, setFilters] = useState(defaultFilters);
   const [sharedOpenItemId, setSharedOpenItemId] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [linkDeleteConfirm, setLinkDeleteConfirm] = useState(null);
+  const [currentActivity, setCurrentActivity] = useState(null);
   const [categoryManagerOpen, setCategoryManagerOpen] = useState(false);
   const [categoryRenameStatus, setCategoryRenameStatus] = useState('');
   const [error, setError] = useState('');
   const draftRef = useRef({ name: '', value: '', categories: [] });
+  const activityRef = useRef({ itemId: '', text: '' });
+  const presenceWriterRef = useRef(null);
+  const activityClearTimerRef = useRef(null);
 
   const isAllowedUser = !user
     ? false
@@ -176,6 +225,7 @@ function ChecklistApp() {
             links: normalizeLinks(itemDoc.data().links),
             categories: normalizeCategories(itemDoc.data().categories),
             value: normalizeValue(itemDoc.data().value),
+            favoriteBy: normalizeFavoriteBy(itemDoc.data().favoriteBy),
           })),
         );
         setItemsLoading(false);
@@ -209,8 +259,10 @@ function ChecklistApp() {
       const workspace = snapshot.data() || {};
       const openItemId = workspace.openItemId;
       const nextDeleteConfirm = workspace.deleteConfirm;
+      const nextLinkDeleteConfirm = workspace.linkDeleteConfirm;
       setSharedOpenItemId(typeof openItemId === 'string' && openItemId ? openItemId : null);
       setDeleteConfirm(nextDeleteConfirm?.itemId ? nextDeleteConfirm : null);
+      setLinkDeleteConfirm(nextLinkDeleteConfirm?.itemId && nextLinkDeleteConfirm?.linkId ? nextLinkDeleteConfirm : null);
     });
   }, [db, isAllowedUser, user]);
 
@@ -227,15 +279,22 @@ function ChecklistApp() {
         snapshot.docs
           .map((presenceDoc) => ({ id: presenceDoc.id, ...presenceDoc.data() }))
           .filter((presence) => presence.online)
-          .filter((presence) => {
-            const lastSeen = presence.updatedAt?.toMillis?.();
-            return !lastSeen || now - lastSeen < 45000;
-          })
-          .map((presence) => ({
-            ...presence,
-            x: Math.min(Math.max(Number(presence.x) || 0, 0), 1),
-            y: Math.min(Math.max(Number(presence.y) || 0, 0), 1),
-          })),
+        .filter((presence) => {
+          const lastSeen = presence.updatedAt?.toMillis?.();
+          return !lastSeen || now - lastSeen < 45000;
+        })
+        .map((presence) => ({
+          ...presence,
+          activity:
+            presence.activity?.itemId && presence.activity?.text
+              ? {
+                  itemId: presence.activity.itemId,
+                  text: presence.activity.text,
+                }
+              : null,
+          x: Math.min(Math.max(Number(presence.x) || 0, 0), 1),
+          y: Math.min(Math.max(Number(presence.y) || 0, 0), 1),
+        })),
       );
     });
   }, [db, isAllowedUser, user]);
@@ -256,6 +315,7 @@ function ChecklistApp() {
         doc(db, 'presence', sessionId),
         {
           draftItem: draftRef.current,
+          activity: activityRef.current,
           online: true,
           updatedAt: serverTimestamp(),
         },
@@ -285,12 +345,14 @@ function ChecklistApp() {
           label: profile.label,
           online: true,
           draftItem: draftRef.current,
+          activity: activityRef.current,
           updatedAt: serverTimestamp(),
           ...patch,
         },
         { merge: true },
       ).catch(() => {});
     };
+    presenceWriterRef.current = writePresence;
 
     const handlePointerMove = (event) => {
       const now = Date.now();
@@ -312,12 +374,30 @@ function ChecklistApp() {
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
+      presenceWriterRef.current = null;
       window.clearInterval(heartbeat);
       window.removeEventListener('pointermove', handlePointerMove);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
-      setDoc(presenceRef, { online: false, updatedAt: serverTimestamp() }, { merge: true }).catch(() => {});
+      setDoc(
+        presenceRef,
+        {
+          activity: { itemId: '', text: '' },
+          online: false,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      ).catch(() => {});
     };
   }, [db, isAllowedUser, sessionId, user]);
+
+  useEffect(
+    () => () => {
+      if (activityClearTimerRef.current) {
+        window.clearTimeout(activityClearTimerRef.current);
+      }
+    },
+    [],
+  );
 
   async function handleLogin() {
     setError('');
@@ -342,6 +422,7 @@ function ChecklistApp() {
         name,
         value: parseCurrencyInput(newItemValue),
         categories: normalizeCategories(newItemCategories),
+        favoriteBy: normalizeFavoriteBy(),
         checked: false,
         links: [],
         createdAt: serverTimestamp(),
@@ -363,6 +444,39 @@ function ChecklistApp() {
       ...patch,
       updatedAt: serverTimestamp(),
     });
+  }
+
+  function publishActivity(activity) {
+    activityRef.current = activity;
+    presenceWriterRef.current?.({ activity });
+  }
+
+  function startActivity(item, text) {
+    if (!item) return;
+    if (activityClearTimerRef.current) {
+      window.clearTimeout(activityClearTimerRef.current);
+      activityClearTimerRef.current = null;
+    }
+
+    const nextActivity = {
+      itemId: item.id,
+      text,
+    };
+    setCurrentActivity(nextActivity);
+    publishActivity(nextActivity);
+  }
+
+  function clearActivity(itemId) {
+    if (activityRef.current.itemId && (!itemId || activityRef.current.itemId === itemId)) {
+      const emptyActivity = { itemId: '', text: '' };
+      setCurrentActivity(null);
+      publishActivity(emptyActivity);
+    }
+  }
+
+  function markActivity(item, text) {
+    startActivity(item, text);
+    activityClearTimerRef.current = window.setTimeout(() => clearActivity(item.id), 1400);
   }
 
   function updateFilters(patch) {
@@ -425,12 +539,54 @@ function ChecklistApp() {
     ).catch((workspaceError) => setError(workspaceError.message));
   }
 
+  function requestDeleteLink(item, link) {
+    const profile = getPresenceProfile(user.email);
+    const nextLinkDeleteConfirm = {
+      itemId: item.id,
+      itemName: item.name,
+      linkId: link.id,
+      linkTitle: link.title || link.url || 'Link sem nome',
+      requestedBy: profile.label,
+      requestedByEmail: user.email,
+    };
+    setLinkDeleteConfirm(nextLinkDeleteConfirm);
+    setDoc(
+      doc(db, 'appState', 'workspace'),
+      {
+        linkDeleteConfirm: nextLinkDeleteConfirm,
+        updatedAt: serverTimestamp(),
+        updatedBy: user.email,
+      },
+      { merge: true },
+    ).catch((workspaceError) => setError(workspaceError.message));
+  }
+
+  function clearLinkDeleteConfirmation() {
+    setLinkDeleteConfirm(null);
+    setDoc(
+      doc(db, 'appState', 'workspace'),
+      {
+        linkDeleteConfirm: null,
+        updatedAt: serverTimestamp(),
+        updatedBy: user.email,
+      },
+      { merge: true },
+    ).catch((workspaceError) => setError(workspaceError.message));
+  }
+
   async function handleRemoveItem(itemId) {
     await deleteDoc(doc(db, 'items', itemId));
     if (sharedOpenItemId === itemId) {
       updateSharedOpenItem(null);
     }
     clearDeleteConfirmation();
+  }
+
+  async function handleRemoveLink(item, linkId) {
+    await updateItem(item.id, {
+      links: normalizeLinks(item.links).filter((link) => link.id !== linkId),
+    });
+    clearLinkDeleteConfirmation();
   }
 
   async function renameCategory(oldCategory, newCategory) {
@@ -523,10 +679,40 @@ function ChecklistApp() {
   const allCategories = Array.from(
     new Set(items.flatMap((item) => normalizeCategories(item.categories))),
   ).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  const currentUserKey = getUserKey(user.email);
+  const currentProfile = getPresenceProfile(user.email);
+  const currentActivityHighlight = currentActivity?.itemId
+    ? {
+        ...currentActivity,
+        sessionId,
+        label: currentProfile.label,
+        color: currentProfile.accentColor,
+      }
+    : null;
+  const activityHighlights = [
+    ...(currentActivityHighlight ? [currentActivityHighlight] : []),
+    ...presenceUsers
+      .filter((presence) => presence.sessionId !== sessionId && presence.activity?.itemId)
+      .map((presence) => {
+        const profile = getPresenceProfile(presence.email);
+        return {
+          itemId: presence.activity.itemId,
+          text: presence.activity.text,
+          sessionId: presence.sessionId,
+          label: presence.label || presence.name || profile.label,
+          color: profile.accentColor,
+        };
+      }),
+  ];
   const filteredItems = items
     .filter((item) => {
       const matchesSearch = item.name.toLowerCase().includes(filters.searchTerm.trim().toLowerCase());
-      const matchesFavorites = !filters.favoritesOnly || item.links.some((link) => link.favorite);
+      const matchesFavorites =
+        filters.favoriteFilters.length === 0 ||
+        filters.favoriteFilters.some(
+          (favoriteKey) =>
+            item.favoriteBy?.[favoriteKey] || item.links.some((link) => link.favoriteBy?.[favoriteKey]),
+        );
       const matchesPurchase =
         filters.purchaseFilter === 'all' ||
         (filters.purchaseFilter === 'bought' && item.checked) ||
@@ -540,7 +726,7 @@ function ChecklistApp() {
     .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }));
   const hasActiveFilters =
     filters.searchTerm.trim() !== '' ||
-    filters.favoritesOnly ||
+    filters.favoriteFilters.length > 0 ||
     filters.selectedCategories.length > 0 ||
     filters.purchaseFilter !== 'all';
   const otherDrafts = presenceUsers.filter((presence) => {
@@ -638,14 +824,14 @@ function ChecklistApp() {
       <FilterBar
         searchTerm={filters.searchTerm}
         selectedCategories={filters.selectedCategories}
-        favoritesOnly={filters.favoritesOnly}
+        favoriteFilters={filters.favoriteFilters}
         purchaseFilter={filters.purchaseFilter}
         allCategories={allCategories}
         totalCount={items.length}
         visibleCount={filteredItems.length}
         onSearchChange={(searchTerm) => updateFilters({ searchTerm })}
         onCategoriesChange={(selectedCategories) => updateFilters({ selectedCategories })}
-        onFavoritesOnlyChange={(favoritesOnly) => updateFilters({ favoritesOnly })}
+        onFavoriteFiltersChange={(favoriteFilters) => updateFilters({ favoriteFilters })}
         onPurchaseFilterChange={(purchaseFilter) => updateFilters({ purchaseFilter })}
         onClear={() => {
           updateFilters(defaultFilters);
@@ -687,12 +873,24 @@ function ChecklistApp() {
             item={item}
             isOpen={sharedOpenItemId === item.id}
             deleteConfirm={deleteConfirm}
+            linkDeleteConfirm={linkDeleteConfirm}
             categorySuggestions={allCategories}
-            onToggleOpen={() => updateSharedOpenItem(sharedOpenItemId === item.id ? null : item.id)}
+            currentUserKey={currentUserKey}
+            activityHighlights={activityHighlights.filter((activity) => activity.itemId === item.id)}
+            onToggleOpen={() => {
+              markActivity(item, sharedOpenItemId === item.id ? 'fechou o item' : 'abriu o item');
+              updateSharedOpenItem(sharedOpenItemId === item.id ? null : item.id);
+            }}
             onUpdate={(patch) => updateItem(item.id, patch)}
+            onStartActivity={(text) => startActivity(item, text)}
+            onClearActivity={() => clearActivity(item.id)}
+            onMarkActivity={(text) => markActivity(item, text)}
             onRequestRemove={() => requestDeleteItem(item)}
             onConfirmRemove={() => handleRemoveItem(item.id)}
             onCancelRemove={clearDeleteConfirmation}
+            onRequestRemoveLink={(link) => requestDeleteLink(item, link)}
+            onConfirmRemoveLink={(linkId) => handleRemoveLink(item, linkId)}
+            onCancelRemoveLink={clearLinkDeleteConfirmation}
           />
         ))}
       </main>
@@ -752,20 +950,23 @@ function PresenceLayer({ users }) {
 function FilterBar({
   searchTerm,
   selectedCategories,
-  favoritesOnly,
+  favoriteFilters,
   purchaseFilter,
   allCategories,
   totalCount,
   visibleCount,
   onSearchChange,
   onCategoriesChange,
-  onFavoritesOnlyChange,
+  onFavoriteFiltersChange,
   onPurchaseFilterChange,
   onClear,
 }) {
   const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
   const hasActiveFilters =
-    searchTerm.trim() !== '' || favoritesOnly || selectedCategories.length > 0 || purchaseFilter !== 'all';
+    searchTerm.trim() !== '' ||
+    favoriteFilters.length > 0 ||
+    selectedCategories.length > 0 ||
+    purchaseFilter !== 'all';
 
   function toggleCategory(category) {
     if (selectedCategories.includes(category)) {
@@ -773,6 +974,14 @@ function FilterBar({
       return;
     }
     onCategoriesChange([...selectedCategories, category]);
+  }
+
+  function toggleFavoriteFilter(favoriteKey) {
+    if (favoriteFilters.includes(favoriteKey)) {
+      onFavoriteFiltersChange(favoriteFilters.filter((filter) => filter !== favoriteKey));
+      return;
+    }
+    onFavoriteFiltersChange([...favoriteFilters, favoriteKey]);
   }
 
   return (
@@ -815,14 +1024,28 @@ function FilterBar({
         )}
       </div>
 
-      <button
-        className={`secondary-action filter-button ${favoritesOnly ? 'active' : ''}`}
-        type="button"
-        onClick={() => onFavoritesOnlyChange(!favoritesOnly)}
-      >
-        <Star size={18} />
-        Favoritos
-      </button>
+      <div className="favorite-filter" aria-label="Filtro de favoritos">
+        <button
+          className={`secondary-action filter-button favorite-filter-button matheus ${
+            favoriteFilters.includes('matheus') ? 'active' : ''
+          }`}
+          type="button"
+          onClick={() => toggleFavoriteFilter('matheus')}
+        >
+          <Star size={18} />
+          Matheus
+        </button>
+        <button
+          className={`secondary-action filter-button favorite-filter-button aly ${
+            favoriteFilters.includes('aly') ? 'active' : ''
+          }`}
+          type="button"
+          onClick={() => toggleFavoriteFilter('aly')}
+        >
+          <Star size={18} />
+          Aly
+        </button>
+      </div>
 
       <div className="status-filter" aria-label="Filtro de compra">
         <button
@@ -949,17 +1172,33 @@ function ItemRow({
   item,
   isOpen,
   deleteConfirm,
+  linkDeleteConfirm,
   categorySuggestions,
+  currentUserKey,
+  activityHighlights,
   onToggleOpen,
   onUpdate,
+  onStartActivity,
+  onClearActivity,
+  onMarkActivity,
   onRequestRemove,
   onConfirmRemove,
   onCancelRemove,
+  onRequestRemoveLink,
+  onConfirmRemoveLink,
+  onCancelRemoveLink,
 }) {
   const [draftName, setDraftName] = useState(item.name);
-  const favoriteCount = item.links.filter((link) => link.favorite).length;
+  const favoriteBy = normalizeFavoriteBy(item.favoriteBy);
+  const favoriteCount =
+    favoriteKeys.filter((favoriteKey) => favoriteBy[favoriteKey]).length +
+    item.links.reduce(
+      (total, link) => total + favoriteKeys.filter((favoriteKey) => link.favoriteBy?.[favoriteKey]).length,
+      0,
+    );
   const [draftValue, setDraftValue] = useState(item.value ? formatCurrency(item.value) : '');
   const isDeleteConfirmOpen = deleteConfirm?.itemId === item.id;
+  const activityStyle = activityHighlights[0] ? { '--activity-color': activityHighlights[0].color } : undefined;
 
   useEffect(() => {
     setDraftName(item.name);
@@ -978,20 +1217,41 @@ function ItemRow({
   }
 
   function updateLinks(nextLinks) {
-    commitUpdate({ links: nextLinks });
+    commitUpdate({ links: normalizeLinks(nextLinks) });
   }
 
   function updateCategories(nextCategories) {
     commitUpdate({ categories: normalizeCategories(nextCategories) });
   }
 
+  function toggleItemFavorite(favoriteKey) {
+    if (favoriteKey !== currentUserKey) return;
+
+    const nextValue = !favoriteBy[favoriteKey];
+    onMarkActivity(nextValue ? 'favoritou o item' : 'removeu favorito do item');
+    commitUpdate({
+      favoriteBy: {
+        ...favoriteBy,
+        [favoriteKey]: nextValue,
+      },
+    });
+  }
+
   return (
-    <article className={`item-row ${item.checked ? 'is-checked' : ''}`}>
+    <article
+      className={`item-row ${item.checked ? 'is-checked' : ''} ${
+        activityHighlights.length > 0 ? 'has-activity' : ''
+      }`}
+      style={activityStyle}
+    >
       <div className="item-summary">
         <button
           className={`check-button ${item.checked ? 'active' : ''}`}
           type="button"
-          onClick={() => commitUpdate({ checked: !item.checked })}
+          onClick={() => {
+            onMarkActivity(item.checked ? 'marcou como pendente' : 'marcou como comprado');
+            commitUpdate({ checked: !item.checked });
+          }}
           title={item.checked ? 'Marcar como pendente' : 'Marcar como comprado'}
         >
           <Check size={18} />
@@ -1001,10 +1261,12 @@ function ItemRow({
           className="item-name-input"
           value={draftName}
           onChange={(event) => setDraftName(event.target.value)}
+          onFocus={() => onStartActivity('editando o nome')}
           onBlur={() => {
             const name = draftName.trim();
             if (name && name !== item.name) commitUpdate({ name });
             if (!name) setDraftName(item.name);
+            onClearActivity();
           }}
           aria-label="Nome do item"
         />
@@ -1013,14 +1275,33 @@ function ItemRow({
           className="item-value-input"
           value={draftValue}
           onChange={(event) => setDraftValue(event.target.value)}
+          onFocus={() => onStartActivity('alterando o valor')}
           onBlur={() => {
             const nextValue = parseCurrencyInput(draftValue);
             commitUpdate({ value: nextValue });
             setDraftValue(nextValue ? formatCurrency(nextValue) : '');
+            onClearActivity();
           }}
           placeholder="R$ 0,00"
           aria-label="Valor do item"
         />
+
+        <div className="favorite-controls item-favorite-controls" aria-label="Favoritos do item">
+          <FavoriteButton
+            active={favoriteBy.matheus}
+            editable={currentUserKey === 'matheus'}
+            ownerKey="matheus"
+            onClick={() => toggleItemFavorite('matheus')}
+            title="Favorito do Matheus"
+          />
+          <FavoriteButton
+            active={favoriteBy.aly}
+            editable={currentUserKey === 'aly'}
+            ownerKey="aly"
+            onClick={() => toggleItemFavorite('aly')}
+            title="Favorito da Aly"
+          />
+        </div>
 
         <div className="item-meta">
           <span>
@@ -1041,10 +1322,32 @@ function ItemRow({
           {isOpen ? <ChevronUp size={19} /> : <ChevronDown size={19} />}
         </button>
 
-        <button className="icon-button danger" type="button" onClick={onRequestRemove} title="Remover item">
+        <button
+          className="icon-button danger"
+          type="button"
+          onClick={() => {
+            onMarkActivity('abriu confirmação de exclusão');
+            onRequestRemove();
+          }}
+          title="Remover item"
+        >
           <Trash2 size={18} />
         </button>
       </div>
+
+      {activityHighlights.length > 0 && (
+        <div className="activity-badges">
+          {activityHighlights.map((activity) => (
+            <span
+              className="activity-badge"
+              key={`${activity.sessionId}-${activity.text}`}
+              style={{ '--activity-color': activity.color }}
+            >
+              {activity.label} está {activity.text}
+            </span>
+          ))}
+        </div>
+      )}
 
       {isDeleteConfirmOpen && (
         <div className="delete-confirmation">
@@ -1088,17 +1391,47 @@ function ItemRow({
               value={item.categories}
               suggestions={categorySuggestions}
               onChange={updateCategories}
+              onFocus={() => onStartActivity('editando categorias')}
+              onBlur={onClearActivity}
               placeholder="Categorias do item"
             />
           </section>
-          <LinkEditor links={item.links} onChange={updateLinks} />
+          <LinkEditor
+            links={item.links}
+            currentUserKey={currentUserKey}
+            linkDeleteConfirm={linkDeleteConfirm}
+            onChange={updateLinks}
+            onStartActivity={onStartActivity}
+            onClearActivity={onClearActivity}
+            onMarkActivity={onMarkActivity}
+            onRequestRemoveLink={onRequestRemoveLink}
+            onConfirmRemoveLink={onConfirmRemoveLink}
+            onCancelRemoveLink={onCancelRemoveLink}
+          />
         </div>
       )}
     </article>
   );
 }
 
-function CategoryInput({ value, suggestions, onChange, placeholder }) {
+function FavoriteButton({ active, editable, ownerKey, onClick, title }) {
+  const profile = ownerKey === 'aly' ? profileByEmail['aly0ciah@gmail.com'] : profileByEmail['theuspsg@gmail.com'];
+  const ownerLabel = profile.label;
+
+  return (
+    <button
+      className={`icon-button favorite favorite-${ownerKey} ${active ? 'active' : ''}`}
+      type="button"
+      onClick={onClick}
+      disabled={!editable}
+      title={editable ? title : `${title} (somente ${ownerLabel} edita)`}
+    >
+      <Star size={18} />
+    </button>
+  );
+}
+
+function CategoryInput({ value, suggestions, onChange, onFocus, onBlur, placeholder }) {
   const [draft, setDraft] = useState('');
   const [focused, setFocused] = useState(false);
   const cleanDraft = draft.trim().toLowerCase();
@@ -1150,10 +1483,14 @@ function CategoryInput({ value, suggestions, onChange, placeholder }) {
           value={draft}
           onBlur={() => {
             addCategory();
+            onBlur?.();
             window.setTimeout(() => setFocused(false), 120);
           }}
           onChange={(event) => setDraft(event.target.value)}
-          onFocus={() => setFocused(true)}
+          onFocus={() => {
+            setFocused(true);
+            onFocus?.();
+          }}
           onKeyDown={handleKeyDown}
           placeholder={value.length === 0 ? placeholder : ''}
           aria-label={placeholder}
@@ -1180,7 +1517,18 @@ function CategoryInput({ value, suggestions, onChange, placeholder }) {
   );
 }
 
-function LinkEditor({ links, onChange }) {
+function LinkEditor({
+  links,
+  currentUserKey,
+  linkDeleteConfirm,
+  onChange,
+  onStartActivity,
+  onClearActivity,
+  onMarkActivity,
+  onRequestRemoveLink,
+  onConfirmRemoveLink,
+  onCancelRemoveLink,
+}) {
   const [title, setTitle] = useState('');
   const [url, setUrl] = useState('');
   const [note, setNote] = useState('');
@@ -1201,9 +1549,11 @@ function LinkEditor({ links, onChange }) {
         title: title.trim(),
         url: cleanUrl,
         note: note.trim(),
+        favoriteBy: normalizeFavoriteBy(),
         favorite: false,
       },
     ]);
+    onMarkActivity('adicionou um link');
     setTitle('');
     setUrl('');
     setNote('');
@@ -1215,13 +1565,28 @@ function LinkEditor({ links, onChange }) {
     onChange(links.map((link) => (link.id === linkId ? { ...link, ...patch } : link)));
   }
 
-  function removeLink(linkId) {
-    onChange(links.filter((link) => link.id !== linkId));
+  function toggleLinkFavorite(link) {
+    const favoriteBy = normalizeFavoriteBy(link.favoriteBy, link.favorite);
+    const nextValue = !favoriteBy[currentUserKey];
+    onMarkActivity(nextValue ? 'favoritou um link' : 'removeu favorito de um link');
+    patchLink(link.id, {
+      favoriteBy: {
+        ...favoriteBy,
+        [currentUserKey]: nextValue,
+      },
+      favorite: false,
+    });
+  }
+
+  function getFavoriteScore(link) {
+    const favoriteBy = normalizeFavoriteBy(link.favoriteBy, link.favorite);
+    if (favoriteBy[currentUserKey]) return 2;
+    return favoriteKeys.some((favoriteKey) => favoriteBy[favoriteKey]) ? 1 : 0;
   }
 
   const sortedLinks = links
     .map((link, index) => ({ ...link, originalIndex: index }))
-    .sort((a, b) => Number(b.favorite) - Number(a.favorite) || a.originalIndex - b.originalIndex);
+    .sort((a, b) => getFavoriteScore(b) - getFavoriteScore(a) || a.originalIndex - b.originalIndex);
 
   return (
     <section className="detail-section links-panel">
@@ -1235,15 +1600,33 @@ function LinkEditor({ links, onChange }) {
       <form className="link-form" onSubmit={addLink}>
         <label className="field-group">
           <span>Nome</span>
-          <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Loja ou produto" />
+          <input
+            value={title}
+            onBlur={onClearActivity}
+            onChange={(event) => setTitle(event.target.value)}
+            onFocus={() => onStartActivity('adicionando link')}
+            placeholder="Loja ou produto"
+          />
         </label>
         <label className="field-group">
           <span>URL</span>
-          <input value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://..." />
+          <input
+            value={url}
+            onBlur={onClearActivity}
+            onChange={(event) => setUrl(event.target.value)}
+            onFocus={() => onStartActivity('adicionando link')}
+            placeholder="https://..."
+          />
         </label>
         <label className="field-group">
           <span>Observação</span>
-          <input value={note} onChange={(event) => setNote(event.target.value)} placeholder="Frete, cor, prazo..." />
+          <input
+            value={note}
+            onBlur={onClearActivity}
+            onChange={(event) => setNote(event.target.value)}
+            onFocus={() => onStartActivity('adicionando link')}
+            placeholder="Frete, cor, prazo..."
+          />
         </label>
         <button className="primary-action compact" type="submit">
           <Plus size={18} />
@@ -1254,41 +1637,88 @@ function LinkEditor({ links, onChange }) {
       <div className="links-list">
         {links.length === 0 && <p className="empty-state small">Nenhum link neste item.</p>}
         {sortedLinks.map((link) => (
-          <div className="link-row" key={link.id}>
-            <button
-              className={`icon-button favorite ${link.favorite ? 'active' : ''}`}
-              type="button"
-              onClick={() => patchLink(link.id, { favorite: !link.favorite })}
-              title={link.favorite ? 'Remover favorito' : 'Favoritar link'}
-            >
-              <Star size={18} />
-            </button>
-            <div className="link-fields">
-              <input
-                value={link.title}
-                onChange={(event) => patchLink(link.id, { title: event.target.value })}
-                placeholder="Nome"
-                aria-label="Nome do link"
-              />
-              <input
-                value={link.url}
-                onChange={(event) => patchLink(link.id, { url: event.target.value })}
-                placeholder="URL"
-                aria-label="URL"
-              />
-              <input
-                value={link.note}
-                onChange={(event) => patchLink(link.id, { note: event.target.value })}
-                placeholder="Observação"
-                aria-label="Observação do link"
-              />
+          <div className="link-row-wrap" key={link.id}>
+            <div className="link-row">
+              <div className="favorite-controls link-favorite-controls" aria-label="Favoritos do link">
+                <FavoriteButton
+                  active={normalizeFavoriteBy(link.favoriteBy, link.favorite).matheus}
+                  editable={currentUserKey === 'matheus'}
+                  ownerKey="matheus"
+                  onClick={() => toggleLinkFavorite(link)}
+                  title="Favorito do Matheus"
+                />
+                <FavoriteButton
+                  active={normalizeFavoriteBy(link.favoriteBy, link.favorite).aly}
+                  editable={currentUserKey === 'aly'}
+                  ownerKey="aly"
+                  onClick={() => toggleLinkFavorite(link)}
+                  title="Favorito da Aly"
+                />
+              </div>
+              <div className="link-fields">
+                <input
+                  value={link.title}
+                  onBlur={onClearActivity}
+                  onChange={(event) => patchLink(link.id, { title: event.target.value })}
+                  onFocus={() => onStartActivity(`editando o link ${link.title || link.url || ''}`.trim())}
+                  placeholder="Nome"
+                  aria-label="Nome do link"
+                />
+                <input
+                  value={link.url}
+                  onBlur={onClearActivity}
+                  onChange={(event) => patchLink(link.id, { url: event.target.value })}
+                  onFocus={() => onStartActivity(`editando a URL ${link.title || ''}`.trim())}
+                  placeholder="URL"
+                  aria-label="URL"
+                />
+                <input
+                  value={link.note}
+                  onBlur={onClearActivity}
+                  onChange={(event) => patchLink(link.id, { note: event.target.value })}
+                  onFocus={() => onStartActivity(`editando observação ${link.title || ''}`.trim())}
+                  placeholder="Observação"
+                  aria-label="Observação do link"
+                />
+              </div>
+              <a className="icon-button" href={link.url} target="_blank" rel="noreferrer" title="Abrir link">
+                <ExternalLink size={18} />
+              </a>
+              <button
+                className="icon-button danger"
+                type="button"
+                onClick={() => {
+                  onMarkActivity('abriu confirmação de remover link');
+                  onRequestRemoveLink(link);
+                }}
+                title="Remover link"
+              >
+                <X size={18} />
+              </button>
             </div>
-            <a className="icon-button" href={link.url} target="_blank" rel="noreferrer" title="Abrir link">
-              <ExternalLink size={18} />
-            </a>
-            <button className="icon-button danger" type="button" onClick={() => removeLink(link.id)} title="Remover link">
-              <X size={18} />
-            </button>
+            {linkDeleteConfirm?.linkId === link.id && (
+              <div className="delete-confirmation link-delete-confirmation">
+                <div>
+                  <strong>Remover este link?</strong>
+                  <p>
+                    {linkDeleteConfirm.requestedBy || 'Alguém'} pediu para remover "
+                    {linkDeleteConfirm.linkTitle || link.title || link.url}".
+                  </p>
+                </div>
+                <div className="delete-confirmation-actions">
+                  <button className="secondary-action compact-button" type="button" onClick={onCancelRemoveLink}>
+                    Cancelar
+                  </button>
+                  <button
+                    className="danger-action compact-button"
+                    type="button"
+                    onClick={() => onConfirmRemoveLink(link.id)}
+                  >
+                    Remover
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         ))}
       </div>

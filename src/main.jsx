@@ -444,19 +444,21 @@ function ChecklistApp() {
   const allCategories = Array.from(
     new Set(items.flatMap((item) => normalizeCategories(item.categories))),
   ).sort((a, b) => a.localeCompare(b, 'pt-BR'));
-  const filteredItems = items.filter((item) => {
-    const matchesSearch = item.name.toLowerCase().includes(filters.searchTerm.trim().toLowerCase());
-    const matchesFavorites = !filters.favoritesOnly || item.links.some((link) => link.favorite);
-    const matchesPurchase =
-      filters.purchaseFilter === 'all' ||
-      (filters.purchaseFilter === 'bought' && item.checked) ||
-      (filters.purchaseFilter === 'pending' && !item.checked);
-    const matchesCategories =
-      filters.selectedCategories.length === 0 ||
-      filters.selectedCategories.every((category) => item.categories.includes(category));
+  const filteredItems = items
+    .filter((item) => {
+      const matchesSearch = item.name.toLowerCase().includes(filters.searchTerm.trim().toLowerCase());
+      const matchesFavorites = !filters.favoritesOnly || item.links.some((link) => link.favorite);
+      const matchesPurchase =
+        filters.purchaseFilter === 'all' ||
+        (filters.purchaseFilter === 'bought' && item.checked) ||
+        (filters.purchaseFilter === 'pending' && !item.checked);
+      const matchesCategories =
+        filters.selectedCategories.length === 0 ||
+        filters.selectedCategories.every((category) => item.categories.includes(category));
 
-    return matchesSearch && matchesFavorites && matchesPurchase && matchesCategories;
-  });
+      return matchesSearch && matchesFavorites && matchesPurchase && matchesCategories;
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }));
   const hasActiveFilters =
     filters.searchTerm.trim() !== '' ||
     filters.favoritesOnly ||

@@ -360,7 +360,9 @@ input:focus {
 
 .filters-panel > *,
 .item-summary > *,
-.link-row > * {
+.link-row > *,
+.status-filter > *,
+.category-filter > * {
   min-width: 0;
 }
 
@@ -458,6 +460,8 @@ input:focus {
   color: #696358;
   font-size: 0.9rem;
   font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -719,7 +723,7 @@ input:focus {
   color: #a42e2e;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 860px) {
   .page-shell {
     width: min(100% - 20px, 980px);
     padding-top: 18px;
@@ -812,11 +816,15 @@ input:focus {
     padding-left: 10px;
   }
 
-  .link-row {
+  .links-list .link-row {
+    display: grid;
+    grid-template-columns: 42px 42px 42px 1fr;
     align-items: start;
   }
 
-  .link-fields {
+  .links-list .link-fields {
+    grid-column: 1 / -1;
+    grid-row: 2;
     grid-template-columns: 1fr;
   }
 }

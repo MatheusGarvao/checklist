@@ -129,6 +129,7 @@ function ChecklistApp() {
   const [newItemName, setNewItemName] = useState('');
   const [newItemValue, setNewItemValue] = useState('');
   const [newItemCategories, setNewItemCategories] = useState([]);
+  const [addItemStatus, setAddItemStatus] = useState('');
   const [filters, setFilters] = useState(defaultFilters);
   const [openItemId, setOpenItemId] = useState(null);
   const [error, setError] = useState('');
@@ -276,20 +277,31 @@ function ChecklistApp() {
   async function handleAddItem(event) {
     event.preventDefault();
     const name = newItemName.trim();
-    if (!name) return;
+    if (!name) {
+      setAddItemStatus('Informe o nome do item.');
+      return;
+    }
 
-    await addDoc(collection(db, 'items'), {
-      name,
-      value: parseCurrencyInput(newItemValue),
-      categories: normalizeCategories(newItemCategories),
-      checked: false,
-      links: [],
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
-    setNewItemName('');
-    setNewItemValue('');
-    setNewItemCategories([]);
+    setAddItemStatus('Salvando item...');
+    try {
+      await addDoc(collection(db, 'items'), {
+        name,
+        value: parseCurrencyInput(newItemValue),
+        categories: normalizeCategories(newItemCategories),
+        checked: false,
+        links: [],
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      setNewItemName('');
+      setNewItemValue('');
+      setNewItemCategories([]);
+      setAddItemStatus('Item adicionado.');
+      window.setTimeout(() => setAddItemStatus(''), 1800);
+    } catch (addError) {
+      setAddItemStatus('');
+      setError(addError.message);
+    }
   }
 
   async function updateItem(itemId, patch) {
@@ -426,31 +438,50 @@ function ChecklistApp() {
         </div>
       </section>
 
-      <form className="add-item-form" onSubmit={handleAddItem}>
-        <input
-          value={newItemName}
-          onChange={(event) => setNewItemName(event.target.value)}
-          placeholder="Novo item (obrigatório)"
-          aria-label="Novo item obrigatório"
-        />
-        <input
-          className="value-input"
-          value={newItemValue}
-          onChange={(event) => setNewItemValue(event.target.value)}
-          placeholder="Valor (opcional)"
-          aria-label="Valor opcional"
-        />
-        <CategoryInput
-          value={newItemCategories}
-          suggestions={allCategories}
-          onChange={setNewItemCategories}
-          placeholder="Categorias (opcional)"
-        />
-        <button className="primary-action compact" type="submit">
-          <Plus size={18} />
-          Adicionar
-        </button>
-      </form>
+      <section className="entry-panel" aria-label="Cadastro de item">
+        <div className="section-heading">
+          <div>
+            <h2>Novo item</h2>
+            <p>Nome é obrigatório. Valor e categorias são opcionais.</p>
+          </div>
+          {addItemStatus && <span className="inline-status">{addItemStatus}</span>}
+        </div>
+
+        <form className="add-item-form" onSubmit={handleAddItem}>
+          <label className="field-group item-name-field">
+            <span>Nome</span>
+            <input
+              value={newItemName}
+              onChange={(event) => setNewItemName(event.target.value)}
+              placeholder="Ex.: Sofá da sala"
+              aria-label="Nome do novo item"
+            />
+          </label>
+          <label className="field-group item-value-field">
+            <span>Valor</span>
+            <input
+              className="value-input"
+              value={newItemValue}
+              onChange={(event) => setNewItemValue(event.target.value)}
+              placeholder="R$ 0,00"
+              aria-label="Valor opcional"
+            />
+          </label>
+          <div className="field-group item-category-field">
+            <span>Categorias</span>
+            <CategoryInput
+              value={newItemCategories}
+              suggestions={allCategories}
+              onChange={setNewItemCategories}
+              placeholder="Ex.: sala, sofá"
+            />
+          </div>
+          <button className="primary-action add-item-button" type="submit" disabled={addItemStatus === 'Salvando item...'}>
+            <Plus size={18} />
+            {addItemStatus === 'Salvando item...' ? 'Salvando' : 'Adicionar item'}
+          </button>
+        </form>
+      </section>
 
       <FilterBar
         searchTerm={filters.searchTerm}
@@ -751,12 +782,20 @@ function ItemRow({ item, isOpen, categorySuggestions, onToggleOpen, onUpdate, on
 
       {isOpen && (
         <div className="item-details">
-          <CategoryInput
-            value={item.categories}
-            suggestions={categorySuggestions}
-            onChange={updateCategories}
-            placeholder="Categorias do item"
-          />
+          <section className="detail-section category-section">
+            <div className="section-heading compact">
+              <div>
+                <h3>Categorias</h3>
+                <p>Organize o item para filtrar depois.</p>
+              </div>
+            </div>
+            <CategoryInput
+              value={item.categories}
+              suggestions={categorySuggestions}
+              onChange={updateCategories}
+              placeholder="Categorias do item"
+            />
+          </section>
           <LinkEditor links={item.links} onChange={updateLinks} />
         </div>
       )}
@@ -850,11 +889,15 @@ function LinkEditor({ links, onChange }) {
   const [title, setTitle] = useState('');
   const [url, setUrl] = useState('');
   const [note, setNote] = useState('');
+  const [linkStatus, setLinkStatus] = useState('');
 
   function addLink(event) {
     event.preventDefault();
     const cleanUrl = url.trim();
-    if (!cleanUrl) return;
+    if (!cleanUrl) {
+      setLinkStatus('Informe a URL do link.');
+      return;
+    }
 
     onChange([
       ...links,
@@ -869,6 +912,8 @@ function LinkEditor({ links, onChange }) {
     setTitle('');
     setUrl('');
     setNote('');
+    setLinkStatus('Link adicionado.');
+    window.setTimeout(() => setLinkStatus(''), 1600);
   }
 
   function patchLink(linkId, patch) {
@@ -884,14 +929,30 @@ function LinkEditor({ links, onChange }) {
     .sort((a, b) => Number(b.favorite) - Number(a.favorite) || a.originalIndex - b.originalIndex);
 
   return (
-    <section className="links-panel">
+    <section className="detail-section links-panel">
+      <div className="section-heading compact">
+        <div>
+          <h3>Links</h3>
+          <p>Guarde opções de compra e destaque as favoritas.</p>
+        </div>
+        {linkStatus && <span className="inline-status">{linkStatus}</span>}
+      </div>
       <form className="link-form" onSubmit={addLink}>
-        <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Nome do link" />
-        <input value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://..." />
-        <input value={note} onChange={(event) => setNote(event.target.value)} placeholder="Observação" />
+        <label className="field-group">
+          <span>Nome</span>
+          <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Loja ou produto" />
+        </label>
+        <label className="field-group">
+          <span>URL</span>
+          <input value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://..." />
+        </label>
+        <label className="field-group">
+          <span>Observação</span>
+          <input value={note} onChange={(event) => setNote(event.target.value)} placeholder="Frete, cor, prazo..." />
+        </label>
         <button className="primary-action compact" type="submit">
           <Plus size={18} />
-          Link
+          Adicionar link
         </button>
       </form>
 

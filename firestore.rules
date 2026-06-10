@@ -54,9 +54,21 @@ service cloud.firestore {
         && request.resource.data.updatedBy is string;
     }
 
+    function isValidWorkspace() {
+      return request.resource.data.keys().hasOnly([
+          "openItemId",
+          "updatedAt",
+          "updatedBy"
+        ])
+        && (request.resource.data.openItemId == null || request.resource.data.openItemId is string)
+        && request.resource.data.updatedAt is timestamp
+        && request.resource.data.updatedBy is string;
+    }
+
     function isValidPresence() {
       return request.resource.data.keys().hasOnly([
           "uid",
+          "sessionId",
           "email",
           "name",
           "color",
@@ -64,9 +76,12 @@ service cloud.firestore {
           "online",
           "x",
           "y",
+          "draftItem",
           "updatedAt"
         ])
         && request.resource.data.uid == request.auth.uid
+        && request.resource.data.sessionId is string
+        && request.resource.data.sessionId.size() <= 80
         && request.resource.data.email == request.auth.token.email
         && request.resource.data.name is string
         && request.resource.data.name.size() <= 80
@@ -81,6 +96,14 @@ service cloud.firestore {
         && request.resource.data.y is number
         && request.resource.data.y >= 0
         && request.resource.data.y <= 1
+        && request.resource.data.draftItem is map
+        && request.resource.data.draftItem.keys().hasOnly(["name", "value", "categories"])
+        && request.resource.data.draftItem.name is string
+        && request.resource.data.draftItem.name.size() <= 120
+        && request.resource.data.draftItem.value is string
+        && request.resource.data.draftItem.value.size() <= 40
+        && request.resource.data.draftItem.categories is list
+        && request.resource.data.draftItem.categories.size() <= 20
         && request.resource.data.updatedAt is timestamp;
     }
 
@@ -91,14 +114,18 @@ service cloud.firestore {
 
     match /appState/{stateId} {
       allow read: if isAllowed();
-      allow create, update: if isAllowed() && stateId == "filters" && isValidFilters();
+      allow create, update: if isAllowed()
+        && (
+          (stateId == "filters" && isValidFilters())
+          || (stateId == "workspace" && isValidWorkspace())
+        );
       allow delete: if false;
     }
 
-    match /presence/{userId} {
+    match /presence/{sessionId} {
       allow read: if isAllowed();
-      allow create, update: if isAllowed() && request.auth.uid == userId && isValidPresence();
-      allow delete: if isAllowed() && request.auth.uid == userId;
+      allow create, update: if isAllowed() && isValidPresence();
+      allow delete: if isAllowed() && resource.data.uid == request.auth.uid;
     }
   }
 }

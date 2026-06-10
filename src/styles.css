@@ -96,7 +96,7 @@ p {
 
 .stats-row {
   display: grid;
-  grid-template-columns: repeat(5, minmax(112px, 1fr));
+  grid-template-columns: repeat(6, minmax(112px, 1fr));
   gap: 10px;
   margin-bottom: 14px;
 }
@@ -188,6 +188,44 @@ p {
   font-size: 0.82rem;
   font-weight: 800;
   white-space: nowrap;
+}
+
+.collab-drafts {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.collab-draft {
+  border: 1px solid #e3ddcf;
+  border-radius: 8px;
+  background: rgba(248, 246, 240, 0.78);
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px;
+}
+
+.collab-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.86);
+  flex: 0 0 10px;
+  margin-top: 5px;
+}
+
+.collab-draft strong {
+  display: block;
+  font-size: 0.88rem;
+  line-height: 1.25;
+}
+
+.collab-draft p {
+  color: #696358;
+  font-size: 0.84rem;
+  line-height: 1.35;
+  margin-top: 2px;
 }
 
 .add-item-form {

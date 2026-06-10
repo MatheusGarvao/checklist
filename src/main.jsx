@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   addDoc,
@@ -121,6 +121,13 @@ function App() {
 function ChecklistApp() {
   const auth = useMemo(() => getAuth(app), []);
   const db = useMemo(() => getFirestore(app), []);
+  const sessionId = useMemo(() => {
+    const existingSessionId = window.sessionStorage.getItem('checklistSessionId');
+    if (existingSessionId) return existingSessionId;
+    const nextSessionId = crypto.randomUUID();
+    window.sessionStorage.setItem('checklistSessionId', nextSessionId);
+    return nextSessionId;
+  }, []);
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [items, setItems] = useState([]);
@@ -131,8 +138,9 @@ function ChecklistApp() {
   const [newItemCategories, setNewItemCategories] = useState([]);
   const [addItemStatus, setAddItemStatus] = useState('');
   const [filters, setFilters] = useState(defaultFilters);
-  const [openItemId, setOpenItemId] = useState(null);
+  const [sharedOpenItemId, setSharedOpenItemId] = useState(null);
   const [error, setError] = useState('');
+  const draftRef = useRef({ name: '', value: '', categories: [] });
 
   const isAllowedUser = !user
     ? false
@@ -190,6 +198,18 @@ function ChecklistApp() {
 
   useEffect(() => {
     if (!user || !isAllowedUser) {
+      setSharedOpenItemId(null);
+      return undefined;
+    }
+
+    return onSnapshot(doc(db, 'appState', 'workspace'), (snapshot) => {
+      const openItemId = snapshot.data()?.openItemId;
+      setSharedOpenItemId(typeof openItemId === 'string' && openItemId ? openItemId : null);
+    });
+  }, [db, isAllowedUser, user]);
+
+  useEffect(() => {
+    if (!user || !isAllowedUser) {
       setPresenceUsers([]);
       return undefined;
     }
@@ -200,7 +220,7 @@ function ChecklistApp() {
       setPresenceUsers(
         snapshot.docs
           .map((presenceDoc) => ({ id: presenceDoc.id, ...presenceDoc.data() }))
-          .filter((presence) => presence.uid !== user.uid && presence.online)
+          .filter((presence) => presence.online)
           .filter((presence) => {
             const lastSeen = presence.updatedAt?.toMillis?.();
             return !lastSeen || now - lastSeen < 45000;
@@ -215,10 +235,36 @@ function ChecklistApp() {
   }, [db, isAllowedUser, user]);
 
   useEffect(() => {
+    draftRef.current = {
+      name: newItemName.trim(),
+      value: newItemValue.trim(),
+      categories: normalizeCategories(newItemCategories),
+    };
+  }, [newItemCategories, newItemName, newItemValue]);
+
+  useEffect(() => {
+    if (!user || !isAllowedUser) return undefined;
+
+    const draftTimer = window.setTimeout(() => {
+      setDoc(
+        doc(db, 'presence', sessionId),
+        {
+          draftItem: draftRef.current,
+          online: true,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      ).catch(() => {});
+    }, 250);
+
+    return () => window.clearTimeout(draftTimer);
+  }, [db, isAllowedUser, newItemCategories, newItemName, newItemValue, sessionId, user]);
+
+  useEffect(() => {
     if (!user || !isAllowedUser) return undefined;
 
     const profile = getPresenceProfile(user.email);
-    const presenceRef = doc(db, 'presence', user.uid);
+    const presenceRef = doc(db, 'presence', sessionId);
     let lastWrite = 0;
 
     const writePresence = (patch = {}) => {
@@ -226,11 +272,13 @@ function ChecklistApp() {
         presenceRef,
         {
           uid: user.uid,
+          sessionId,
           email: user.email,
           name: user.displayName || profile.label,
           color: profile.color,
           label: profile.label,
           online: true,
+          draftItem: draftRef.current,
           updatedAt: serverTimestamp(),
           ...patch,
         },
@@ -263,7 +311,7 @@ function ChecklistApp() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       setDoc(presenceRef, { online: false, updatedAt: serverTimestamp() }, { merge: true }).catch(() => {});
     };
-  }, [db, isAllowedUser, user]);
+  }, [db, isAllowedUser, sessionId, user]);
 
   async function handleLogin() {
     setError('');
@@ -325,10 +373,23 @@ function ChecklistApp() {
     ).catch((filterError) => setError(filterError.message));
   }
 
+  function updateSharedOpenItem(openItemId) {
+    setSharedOpenItemId(openItemId);
+    setDoc(
+      doc(db, 'appState', 'workspace'),
+      {
+        openItemId,
+        updatedAt: serverTimestamp(),
+        updatedBy: user.email,
+      },
+      { merge: true },
+    ).catch((workspaceError) => setError(workspaceError.message));
+  }
+
   async function handleRemoveItem(itemId) {
     await deleteDoc(doc(db, 'items', itemId));
-    if (openItemId === itemId) {
-      setOpenItemId(null);
+    if (sharedOpenItemId === itemId) {
+      updateSharedOpenItem(null);
     }
   }
 
@@ -401,6 +462,11 @@ function ChecklistApp() {
     filters.favoritesOnly ||
     filters.selectedCategories.length > 0 ||
     filters.purchaseFilter !== 'all';
+  const otherDrafts = presenceUsers.filter((presence) => {
+    const draft = presence.draftItem || {};
+    return presence.sessionId !== sessionId && (draft.name || draft.value || draft.categories?.length > 0);
+  });
+  const visiblePresenceUsers = presenceUsers.filter((presence) => presence.sessionId !== sessionId);
 
   return (
     <Shell>
@@ -435,6 +501,10 @@ function ChecklistApp() {
         <div className="money-stat">
           <strong>{formatCurrency(spentValue)}</strong>
           <span>gasto</span>
+        </div>
+        <div>
+          <strong>{presenceUsers.length}</strong>
+          <span>sessões online</span>
         </div>
       </section>
 
@@ -481,6 +551,7 @@ function ChecklistApp() {
             {addItemStatus === 'Salvando item...' ? 'Salvando' : 'Adicionar item'}
           </button>
         </form>
+        {otherDrafts.length > 0 && <CollaborativeDrafts drafts={otherDrafts} />}
       </section>
 
       <FilterBar
@@ -514,17 +585,39 @@ function ChecklistApp() {
           <ItemRow
             key={item.id}
             item={item}
-            isOpen={openItemId === item.id}
+            isOpen={sharedOpenItemId === item.id}
             categorySuggestions={allCategories}
-            onToggleOpen={() => setOpenItemId(openItemId === item.id ? null : item.id)}
+            onToggleOpen={() => updateSharedOpenItem(sharedOpenItemId === item.id ? null : item.id)}
             onUpdate={(patch) => updateItem(item.id, patch)}
             onRemove={() => handleRemoveItem(item.id)}
           />
         ))}
       </main>
 
-      <PresenceLayer users={presenceUsers} />
+      <PresenceLayer users={visiblePresenceUsers} />
     </Shell>
+  );
+}
+
+function CollaborativeDrafts({ drafts }) {
+  return (
+    <div className="collab-drafts">
+      {drafts.map((presence) => {
+        const draft = presence.draftItem || {};
+        const categoryText = draft.categories?.length ? draft.categories.join(', ') : 'sem categorias';
+        return (
+          <div className="collab-draft" key={presence.sessionId}>
+            <span className="collab-dot" style={{ background: presence.color }} />
+            <div>
+              <strong>{presence.label || presence.name || presence.email} está cadastrando</strong>
+              <p>
+                {draft.name || 'Novo item'} · {draft.value || 'sem valor'} · {categoryText}
+              </p>
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -536,7 +629,7 @@ function PresenceLayer({ users }) {
       {users.map((presence) => (
         <div
           className="presence-cursor"
-          key={presence.uid}
+          key={presence.sessionId || presence.uid}
           style={{
             '--cursor-color': presence.color,
             left: `${presence.x * 100}%`,

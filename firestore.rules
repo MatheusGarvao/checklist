@@ -1,0 +1,39 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAllowed() {
+      return request.auth != null
+        && request.auth.token.email in [
+          "theuspsg@gmail.com",
+          "aly0ciah@gmail.com"
+        ];
+    }
+
+    function isValidItem() {
+      return request.resource.data.keys().hasOnly([
+          "name",
+          "categories",
+          "checked",
+          "links",
+          "createdAt",
+          "updatedAt"
+        ])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 120
+        && request.resource.data.checked is bool
+        && request.resource.data.categories is list
+        && request.resource.data.categories.size() <= 20
+        && request.resource.data.links is list
+        && request.resource.data.links.size() <= 100
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.updatedAt is timestamp;
+    }
+
+    match /items/{itemId} {
+      allow read, delete: if isAllowed();
+      allow create, update: if isAllowed() && isValidItem();
+    }
+  }
+}

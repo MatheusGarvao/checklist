@@ -330,7 +330,7 @@ function ChecklistApp() {
         <section className="login-panel">
           <div>
             <p className="eyebrow">Checklist da Casa</p>
-            <h1>Compras compartilhadas, sem bagunca.</h1>
+            <h1>Compras compartilhadas, sem bagunça.</h1>
             <p>Entre com Google para acessar a lista sincronizada.</p>
           </div>
           <button className="primary-action" type="button" onClick={handleLogin}>
@@ -349,7 +349,7 @@ function ChecklistApp() {
         <section className="login-panel">
           <div>
             <p className="eyebrow">Acesso restrito</p>
-            <h1>Este e-mail nao esta liberado.</h1>
+            <h1>Este e-mail não está liberado.</h1>
             <p>{user.email}</p>
           </div>
           <button className="secondary-action" type="button" onClick={() => signOut(auth)}>
@@ -430,8 +430,8 @@ function ChecklistApp() {
         <input
           value={newItemName}
           onChange={(event) => setNewItemName(event.target.value)}
-          placeholder="Novo item (obrigatorio)"
-          aria-label="Novo item obrigatorio"
+          placeholder="Novo item (obrigatório)"
+          aria-label="Novo item obrigatório"
         />
         <input
           className="value-input"
@@ -640,8 +640,8 @@ function SetupMissing() {
     <Shell>
       <section className="login-panel">
         <div>
-          <p className="eyebrow">Configuracao pendente</p>
-          <h1>Firebase ainda nao foi configurado.</h1>
+          <p className="eyebrow">Configuração pendente</p>
+          <h1>Firebase ainda não foi configurado.</h1>
           <p>Preencha o arquivo .env usando .env.example como base.</p>
         </div>
       </section>
@@ -888,7 +888,7 @@ function LinkEditor({ links, onChange }) {
       <form className="link-form" onSubmit={addLink}>
         <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Nome do link" />
         <input value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://..." />
-        <input value={note} onChange={(event) => setNote(event.target.value)} placeholder="Observacao" />
+        <input value={note} onChange={(event) => setNote(event.target.value)} placeholder="Observação" />
         <button className="primary-action compact" type="submit">
           <Plus size={18} />
           Link
@@ -923,8 +923,8 @@ function LinkEditor({ links, onChange }) {
               <input
                 value={link.note}
                 onChange={(event) => patchLink(link.id, { note: event.target.value })}
-                placeholder="Observacao"
-                aria-label="Observacao do link"
+                placeholder="Observação"
+                aria-label="Observação do link"
               />
             </div>
             <a className="icon-button" href={link.url} target="_blank" rel="noreferrer" title="Abrir link">

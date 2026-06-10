@@ -1,6 +1,6 @@
 # Checklist da Casa
 
-App simples para organizar itens de compra da casa, com links, observacoes, favoritos e status de comprado.
+App simples para organizar itens de compra da casa, com links, observações, favoritos e status de comprado.
 
 ## Rodar localmente
 
@@ -10,7 +10,7 @@ cp .env.example .env
 npm run dev
 ```
 
-Preencha o `.env` com as configuracoes do Firebase Web App.
+Preencha o `.env` com as configurações do Firebase Web App.
 
 ## Firebase
 
@@ -20,7 +20,7 @@ Preencha o `.env` com as configuracoes do Firebase Web App.
 4. Edite `firestore.rules` trocando os dois e-mails permitidos.
 5. Publique as regras no console do Firebase.
 
-As variaveis `VITE_*` sao publicas no navegador. A protecao real fica nas regras do Firestore.
+As variáveis `VITE_*` são públicas no navegador. A proteção real fica nas regras do Firestore.
 
 ## GitHub Pages
 

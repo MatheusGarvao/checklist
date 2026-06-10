@@ -278,6 +278,7 @@ input:focus {
 
 .primary-action,
 .secondary-action,
+.danger-action,
 .icon-button,
 .check-button {
   min-height: 42px;
@@ -311,6 +312,22 @@ input:focus {
   background: #fff;
   color: #201f1b;
   border-color: #d7d0c1;
+}
+
+.danger-action {
+  background: #a42e2e;
+  color: #fff;
+  border-color: #a42e2e;
+  padding: 0 14px;
+  font-weight: 800;
+}
+
+.danger-action:hover {
+  background: #842424;
+}
+
+.compact-button {
+  min-height: 36px;
 }
 
 .icon-button,
@@ -580,6 +597,39 @@ input:focus {
   font-weight: 800;
 }
 
+.delete-confirmation {
+  border-top: 1px solid #ead5d5;
+  border-bottom: 1px solid #ead5d5;
+  background: #fff7f5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0;
+  padding: 12px;
+}
+
+.delete-confirmation strong {
+  display: block;
+  color: #7a2424;
+  font-size: 0.95rem;
+  line-height: 1.25;
+}
+
+.delete-confirmation p {
+  color: #6f5b58;
+  font-size: 0.86rem;
+  line-height: 1.35;
+  margin-top: 3px;
+}
+
+.delete-confirmation-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
 .category-strip {
   display: flex;
   flex-wrap: wrap;
@@ -810,6 +860,16 @@ input:focus {
     grid-column: 1 / -1;
     order: 5;
     justify-content: flex-start;
+  }
+
+  .delete-confirmation {
+    align-items: stretch;
+    display: grid;
+  }
+
+  .delete-confirmation-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
   }
 
   .category-strip {

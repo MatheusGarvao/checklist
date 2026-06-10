@@ -139,6 +139,7 @@ function ChecklistApp() {
   const [addItemStatus, setAddItemStatus] = useState('');
   const [filters, setFilters] = useState(defaultFilters);
   const [sharedOpenItemId, setSharedOpenItemId] = useState(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [error, setError] = useState('');
   const draftRef = useRef({ name: '', value: '', categories: [] });
 
@@ -203,8 +204,11 @@ function ChecklistApp() {
     }
 
     return onSnapshot(doc(db, 'appState', 'workspace'), (snapshot) => {
-      const openItemId = snapshot.data()?.openItemId;
+      const workspace = snapshot.data() || {};
+      const openItemId = workspace.openItemId;
+      const nextDeleteConfirm = workspace.deleteConfirm;
       setSharedOpenItemId(typeof openItemId === 'string' && openItemId ? openItemId : null);
+      setDeleteConfirm(nextDeleteConfirm?.itemId ? nextDeleteConfirm : null);
     });
   }, [db, isAllowedUser, user]);
 
@@ -386,11 +390,45 @@ function ChecklistApp() {
     ).catch((workspaceError) => setError(workspaceError.message));
   }
 
+  function requestDeleteItem(item) {
+    const profile = getPresenceProfile(user.email);
+    const nextDeleteConfirm = {
+      itemId: item.id,
+      itemName: item.name,
+      requestedBy: profile.label,
+      requestedByEmail: user.email,
+    };
+    setDeleteConfirm(nextDeleteConfirm);
+    setDoc(
+      doc(db, 'appState', 'workspace'),
+      {
+        deleteConfirm: nextDeleteConfirm,
+        updatedAt: serverTimestamp(),
+        updatedBy: user.email,
+      },
+      { merge: true },
+    ).catch((workspaceError) => setError(workspaceError.message));
+  }
+
+  function clearDeleteConfirmation() {
+    setDeleteConfirm(null);
+    setDoc(
+      doc(db, 'appState', 'workspace'),
+      {
+        deleteConfirm: null,
+        updatedAt: serverTimestamp(),
+        updatedBy: user.email,
+      },
+      { merge: true },
+    ).catch((workspaceError) => setError(workspaceError.message));
+  }
+
   async function handleRemoveItem(itemId) {
     await deleteDoc(doc(db, 'items', itemId));
     if (sharedOpenItemId === itemId) {
       updateSharedOpenItem(null);
     }
+    clearDeleteConfirmation();
   }
 
   if (authLoading) {
@@ -588,10 +626,13 @@ function ChecklistApp() {
             key={item.id}
             item={item}
             isOpen={sharedOpenItemId === item.id}
+            deleteConfirm={deleteConfirm}
             categorySuggestions={allCategories}
             onToggleOpen={() => updateSharedOpenItem(sharedOpenItemId === item.id ? null : item.id)}
             onUpdate={(patch) => updateItem(item.id, patch)}
-            onRemove={() => handleRemoveItem(item.id)}
+            onRequestRemove={() => requestDeleteItem(item)}
+            onConfirmRemove={() => handleRemoveItem(item.id)}
+            onCancelRemove={clearDeleteConfirmation}
           />
         ))}
       </main>
@@ -777,10 +818,21 @@ function SetupMissing() {
   );
 }
 
-function ItemRow({ item, isOpen, categorySuggestions, onToggleOpen, onUpdate, onRemove }) {
+function ItemRow({
+  item,
+  isOpen,
+  deleteConfirm,
+  categorySuggestions,
+  onToggleOpen,
+  onUpdate,
+  onRequestRemove,
+  onConfirmRemove,
+  onCancelRemove,
+}) {
   const [draftName, setDraftName] = useState(item.name);
   const favoriteCount = item.links.filter((link) => link.favorite).length;
   const [draftValue, setDraftValue] = useState(item.value ? formatCurrency(item.value) : '');
+  const isDeleteConfirmOpen = deleteConfirm?.itemId === item.id;
 
   useEffect(() => {
     setDraftName(item.name);
@@ -862,10 +914,29 @@ function ItemRow({ item, isOpen, categorySuggestions, onToggleOpen, onUpdate, on
           {isOpen ? <ChevronUp size={19} /> : <ChevronDown size={19} />}
         </button>
 
-        <button className="icon-button danger" type="button" onClick={onRemove} title="Remover item">
+        <button className="icon-button danger" type="button" onClick={onRequestRemove} title="Remover item">
           <Trash2 size={18} />
         </button>
       </div>
+
+      {isDeleteConfirmOpen && (
+        <div className="delete-confirmation">
+          <div>
+            <strong>Excluir este item?</strong>
+            <p>
+              {deleteConfirm.requestedBy || 'Alguém'} pediu para excluir "{deleteConfirm.itemName || item.name}".
+            </p>
+          </div>
+          <div className="delete-confirmation-actions">
+            <button className="secondary-action compact-button" type="button" onClick={onCancelRemove}>
+              Cancelar
+            </button>
+            <button className="danger-action compact-button" type="button" onClick={onConfirmRemove}>
+              Excluir
+            </button>
+          </div>
+        </div>
+      )}
 
       {item.categories.length > 0 && (
         <div className="category-strip">

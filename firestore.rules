@@ -57,10 +57,29 @@ service cloud.firestore {
     function isValidWorkspace() {
       return request.resource.data.keys().hasOnly([
           "openItemId",
+          "deleteConfirm",
           "updatedAt",
           "updatedBy"
         ])
         && (request.resource.data.openItemId == null || request.resource.data.openItemId is string)
+        && (
+          request.resource.data.deleteConfirm == null
+          || (
+            request.resource.data.deleteConfirm is map
+            && request.resource.data.deleteConfirm.keys().hasOnly([
+              "itemId",
+              "itemName",
+              "requestedBy",
+              "requestedByEmail"
+            ])
+            && request.resource.data.deleteConfirm.itemId is string
+            && request.resource.data.deleteConfirm.itemName is string
+            && request.resource.data.deleteConfirm.itemName.size() <= 120
+            && request.resource.data.deleteConfirm.requestedBy is string
+            && request.resource.data.deleteConfirm.requestedBy.size() <= 40
+            && request.resource.data.deleteConfirm.requestedByEmail == request.auth.token.email
+          )
+        )
         && request.resource.data.updatedAt is timestamp
         && request.resource.data.updatedBy is string;
     }

@@ -452,6 +452,43 @@ input:focus {
   padding: 6px;
 }
 
+.category-manager-panel {
+  display: grid;
+  gap: 10px;
+  margin: -6px 0 18px;
+}
+
+.category-manager-toggle {
+  justify-self: start;
+}
+
+.category-manager {
+  border: 1px solid #ddd7c8;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 12px;
+}
+
+.category-manager-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.category-chip.active {
+  background: #dceedd;
+  border-color: #91b596;
+  color: #245244;
+}
+
+.category-rename-form {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(160px, 1fr) auto;
+  align-items: end;
+  gap: 10px;
+}
+
 .category-option {
   min-height: 38px;
   border-radius: 7px;
@@ -838,6 +875,15 @@ input:focus {
 
   .filter-count {
     text-align: center;
+  }
+
+  .category-manager-toggle,
+  .category-rename-form .primary-action {
+    width: 100%;
+  }
+
+  .category-rename-form {
+    grid-template-columns: 1fr;
   }
 
   .category-filter-menu {

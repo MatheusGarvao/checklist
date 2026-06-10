@@ -140,6 +140,8 @@ function ChecklistApp() {
   const [filters, setFilters] = useState(defaultFilters);
   const [sharedOpenItemId, setSharedOpenItemId] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [categoryManagerOpen, setCategoryManagerOpen] = useState(false);
+  const [categoryRenameStatus, setCategoryRenameStatus] = useState('');
   const [error, setError] = useState('');
   const draftRef = useRef({ name: '', value: '', categories: [] });
 
@@ -431,6 +433,45 @@ function ChecklistApp() {
     clearDeleteConfirmation();
   }
 
+  async function renameCategory(oldCategory, newCategory) {
+    const fromCategory = normalizeCategories([oldCategory])[0];
+    const toCategory = normalizeCategories([newCategory])[0];
+
+    if (!fromCategory || !toCategory) {
+      setCategoryRenameStatus('Informe a categoria e o novo nome.');
+      return;
+    }
+
+    if (fromCategory === toCategory) {
+      setCategoryRenameStatus('O novo nome é igual ao atual.');
+      return;
+    }
+
+    const affectedItems = items.filter((item) => item.categories.includes(fromCategory));
+    if (affectedItems.length === 0) {
+      setCategoryRenameStatus('Nenhum item usa essa categoria.');
+      return;
+    }
+
+    setCategoryRenameStatus('Renomeando categoria...');
+    try {
+      await Promise.all(
+        affectedItems.map((item) =>
+          updateItem(item.id, {
+            categories: normalizeCategories(
+              item.categories.map((category) => (category === fromCategory ? toCategory : category)),
+            ),
+          }),
+        ),
+      );
+      setCategoryRenameStatus(`Categoria renomeada em ${affectedItems.length} item(ns).`);
+      window.setTimeout(() => setCategoryRenameStatus(''), 2400);
+    } catch (renameError) {
+      setCategoryRenameStatus('');
+      setError(renameError.message);
+    }
+  }
+
   if (authLoading) {
     return <Shell status="Carregando..." />;
   }
@@ -610,6 +651,25 @@ function ChecklistApp() {
           updateFilters(defaultFilters);
         }}
       />
+
+      <section className="category-manager-panel">
+        <button
+          className="secondary-action category-manager-toggle"
+          type="button"
+          onClick={() => setCategoryManagerOpen(!categoryManagerOpen)}
+        >
+          <Tag size={18} />
+          Organizar categorias
+          {categoryManagerOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+        </button>
+        {categoryManagerOpen && (
+          <CategoryManager
+            categories={allCategories}
+            status={categoryRenameStatus}
+            onRename={renameCategory}
+          />
+        )}
+      </section>
 
       {error && <p className="error-text">{error}</p>}
 
@@ -796,6 +856,73 @@ function FilterBar({
   );
 }
 
+function CategoryManager({ categories, status, onRename }) {
+  const [selectedCategory, setSelectedCategory] = useState([]);
+  const [newName, setNewName] = useState('');
+  const selectedName = selectedCategory[0] || '';
+
+  function handleSubmit(event) {
+    event.preventDefault();
+    onRename(selectedName, newName);
+    setNewName('');
+  }
+
+  return (
+    <div className="category-manager">
+      <div className="section-heading compact">
+        <div>
+          <h3>Categorias</h3>
+          <p>Renomeie uma categoria em todos os itens de uma vez.</p>
+        </div>
+        {status && <span className="inline-status">{status}</span>}
+      </div>
+
+      {categories.length === 0 ? (
+        <p className="empty-state small">Nenhuma categoria cadastrada ainda.</p>
+      ) : (
+        <>
+          <div className="category-manager-list">
+            {categories.map((category) => (
+              <button
+                className={`category-chip ${selectedName === category ? 'active' : ''}`}
+                key={category}
+                type="button"
+                onClick={() => setSelectedCategory([category])}
+              >
+                {category}
+              </button>
+            ))}
+          </div>
+
+          <form className="category-rename-form" onSubmit={handleSubmit}>
+            <div className="field-group">
+              <span>Categoria atual</span>
+              <CategoryInput
+                value={selectedCategory}
+                suggestions={categories}
+                onChange={(nextValue) => setSelectedCategory(nextValue.slice(-1))}
+                placeholder="Escolha uma categoria"
+              />
+            </div>
+            <label className="field-group">
+              <span>Novo nome</span>
+              <input
+                value={newName}
+                onChange={(event) => setNewName(event.target.value)}
+                placeholder="Ex.: sala"
+                aria-label="Novo nome da categoria"
+              />
+            </label>
+            <button className="primary-action compact" type="submit">
+              Renomear
+            </button>
+          </form>
+        </>
+      )}
+    </div>
+  );
+}
+
 function Shell({ children, status }) {
   return (
     <div className="page-shell">
@@ -976,8 +1103,8 @@ function CategoryInput({ value, suggestions, onChange, placeholder }) {
   const [focused, setFocused] = useState(false);
   const cleanDraft = draft.trim().toLowerCase();
   const availableSuggestions = suggestions
-    .filter((category) => !value.includes(category))
-    .filter((category) => (cleanDraft ? category.includes(cleanDraft) : true))
+    .filter((category) => !value.some((selectedCategory) => selectedCategory.toLowerCase() === category.toLowerCase()))
+    .filter((category) => (cleanDraft ? category.toLowerCase().includes(cleanDraft) : true))
     .slice(0, 6);
 
   function addCategory(rawCategory = draft) {

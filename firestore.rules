@@ -35,9 +35,70 @@ service cloud.firestore {
         && request.resource.data.updatedAt is timestamp;
     }
 
+    function isValidFilters() {
+      return request.resource.data.keys().hasOnly([
+          "searchTerm",
+          "selectedCategories",
+          "favoritesOnly",
+          "purchaseFilter",
+          "updatedAt",
+          "updatedBy"
+        ])
+        && request.resource.data.searchTerm is string
+        && request.resource.data.searchTerm.size() <= 120
+        && request.resource.data.selectedCategories is list
+        && request.resource.data.selectedCategories.size() <= 50
+        && request.resource.data.favoritesOnly is bool
+        && request.resource.data.purchaseFilter in ["all", "bought", "pending"]
+        && request.resource.data.updatedAt is timestamp
+        && request.resource.data.updatedBy is string;
+    }
+
+    function isValidPresence() {
+      return request.resource.data.keys().hasOnly([
+          "uid",
+          "email",
+          "name",
+          "color",
+          "label",
+          "online",
+          "x",
+          "y",
+          "updatedAt"
+        ])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.name is string
+        && request.resource.data.name.size() <= 80
+        && request.resource.data.color is string
+        && request.resource.data.color.size() <= 16
+        && request.resource.data.label is string
+        && request.resource.data.label.size() <= 40
+        && request.resource.data.online is bool
+        && request.resource.data.x is number
+        && request.resource.data.x >= 0
+        && request.resource.data.x <= 1
+        && request.resource.data.y is number
+        && request.resource.data.y >= 0
+        && request.resource.data.y <= 1
+        && request.resource.data.updatedAt is timestamp;
+    }
+
     match /items/{itemId} {
       allow read, delete: if isAllowed();
       allow create, update: if isAllowed() && isValidItem();
+    }
+
+    match /appState/{stateId} {
+      allow read: if isAllowed();
+      allow create, update: if isAllowed() && stateId == "filters" && isValidFilters();
+      allow delete: if false;
+    }
+
+    match /presence/{userId} {
+      allow read: if isAllowed();
+      allow create, update: if isAllowed() && request.auth.uid == userId && isValidPresence();
+      allow delete: if isAllowed() && request.auth.uid == userId;
     }
   }
 }

@@ -10,6 +10,7 @@ import {
   orderBy,
   query,
   serverTimestamp,
+  setDoc,
   updateDoc,
 } from 'firebase/firestore';
 import {
@@ -41,6 +42,32 @@ const allowedEmails = (import.meta.env.VITE_ALLOWED_EMAILS || '')
   .split(',')
   .map((email) => email.trim().toLowerCase())
   .filter(Boolean);
+
+const defaultFilters = {
+  searchTerm: '',
+  selectedCategories: [],
+  favoritesOnly: false,
+  purchaseFilter: 'all',
+};
+
+function getPresenceProfile(email = '') {
+  const cleanEmail = email.toLowerCase();
+  if (cleanEmail === 'aly0ciah@gmail.com') {
+    return { color: '#ff4fb3', label: 'Aly' };
+  }
+  return { color: '#f0c419', label: 'Matheus' };
+}
+
+function normalizeFilters(filters = {}) {
+  return {
+    searchTerm: typeof filters.searchTerm === 'string' ? filters.searchTerm : '',
+    selectedCategories: normalizeCategories(filters.selectedCategories || []),
+    favoritesOnly: Boolean(filters.favoritesOnly),
+    purchaseFilter: ['all', 'bought', 'pending'].includes(filters.purchaseFilter)
+      ? filters.purchaseFilter
+      : 'all',
+  };
+}
 
 function normalizeLinks(links = []) {
   return links.map((link) => ({
@@ -98,13 +125,11 @@ function ChecklistApp() {
   const [authLoading, setAuthLoading] = useState(true);
   const [items, setItems] = useState([]);
   const [itemsLoading, setItemsLoading] = useState(true);
+  const [presenceUsers, setPresenceUsers] = useState([]);
   const [newItemName, setNewItemName] = useState('');
   const [newItemValue, setNewItemValue] = useState('');
   const [newItemCategories, setNewItemCategories] = useState([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategories, setSelectedCategories] = useState([]);
-  const [favoritesOnly, setFavoritesOnly] = useState(false);
-  const [purchaseFilter, setPurchaseFilter] = useState('all');
+  const [filters, setFilters] = useState(defaultFilters);
   const [openItemId, setOpenItemId] = useState(null);
   const [error, setError] = useState('');
 
@@ -151,6 +176,94 @@ function ChecklistApp() {
     );
   }, [db, isAllowedUser, user]);
 
+  useEffect(() => {
+    if (!user || !isAllowedUser) {
+      setFilters(defaultFilters);
+      return undefined;
+    }
+
+    return onSnapshot(doc(db, 'appState', 'filters'), (snapshot) => {
+      setFilters(snapshot.exists() ? normalizeFilters(snapshot.data()) : defaultFilters);
+    });
+  }, [db, isAllowedUser, user]);
+
+  useEffect(() => {
+    if (!user || !isAllowedUser) {
+      setPresenceUsers([]);
+      return undefined;
+    }
+
+    const presenceRef = collection(db, 'presence');
+    return onSnapshot(presenceRef, (snapshot) => {
+      const now = Date.now();
+      setPresenceUsers(
+        snapshot.docs
+          .map((presenceDoc) => ({ id: presenceDoc.id, ...presenceDoc.data() }))
+          .filter((presence) => presence.uid !== user.uid && presence.online)
+          .filter((presence) => {
+            const lastSeen = presence.updatedAt?.toMillis?.();
+            return !lastSeen || now - lastSeen < 45000;
+          })
+          .map((presence) => ({
+            ...presence,
+            x: Math.min(Math.max(Number(presence.x) || 0, 0), 1),
+            y: Math.min(Math.max(Number(presence.y) || 0, 0), 1),
+          })),
+      );
+    });
+  }, [db, isAllowedUser, user]);
+
+  useEffect(() => {
+    if (!user || !isAllowedUser) return undefined;
+
+    const profile = getPresenceProfile(user.email);
+    const presenceRef = doc(db, 'presence', user.uid);
+    let lastWrite = 0;
+
+    const writePresence = (patch = {}) => {
+      setDoc(
+        presenceRef,
+        {
+          uid: user.uid,
+          email: user.email,
+          name: user.displayName || profile.label,
+          color: profile.color,
+          label: profile.label,
+          online: true,
+          updatedAt: serverTimestamp(),
+          ...patch,
+        },
+        { merge: true },
+      ).catch(() => {});
+    };
+
+    const handlePointerMove = (event) => {
+      const now = Date.now();
+      if (now - lastWrite < 90) return;
+      lastWrite = now;
+      writePresence({
+        x: event.clientX / window.innerWidth,
+        y: event.clientY / window.innerHeight,
+      });
+    };
+
+    const handleVisibilityChange = () => {
+      writePresence({ online: !document.hidden });
+    };
+
+    writePresence({ x: 0.5, y: 0.5 });
+    const heartbeat = window.setInterval(() => writePresence(), 15000);
+    window.addEventListener('pointermove', handlePointerMove);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(heartbeat);
+      window.removeEventListener('pointermove', handlePointerMove);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      setDoc(presenceRef, { online: false, updatedAt: serverTimestamp() }, { merge: true }).catch(() => {});
+    };
+  }, [db, isAllowedUser, user]);
+
   async function handleLogin() {
     setError('');
     try {
@@ -184,6 +297,20 @@ function ChecklistApp() {
       ...patch,
       updatedAt: serverTimestamp(),
     });
+  }
+
+  function updateFilters(patch) {
+    const nextFilters = normalizeFilters({ ...filters, ...patch });
+    setFilters(nextFilters);
+    setDoc(
+      doc(db, 'appState', 'filters'),
+      {
+        ...nextFilters,
+        updatedAt: serverTimestamp(),
+        updatedBy: user.email,
+      },
+      { merge: true },
+    ).catch((filterError) => setError(filterError.message));
   }
 
   async function handleRemoveItem(itemId) {
@@ -245,20 +372,23 @@ function ChecklistApp() {
     new Set(items.flatMap((item) => normalizeCategories(item.categories))),
   ).sort((a, b) => a.localeCompare(b, 'pt-BR'));
   const filteredItems = items.filter((item) => {
-    const matchesSearch = item.name.toLowerCase().includes(searchTerm.trim().toLowerCase());
-    const matchesFavorites = !favoritesOnly || item.links.some((link) => link.favorite);
+    const matchesSearch = item.name.toLowerCase().includes(filters.searchTerm.trim().toLowerCase());
+    const matchesFavorites = !filters.favoritesOnly || item.links.some((link) => link.favorite);
     const matchesPurchase =
-      purchaseFilter === 'all' ||
-      (purchaseFilter === 'bought' && item.checked) ||
-      (purchaseFilter === 'pending' && !item.checked);
+      filters.purchaseFilter === 'all' ||
+      (filters.purchaseFilter === 'bought' && item.checked) ||
+      (filters.purchaseFilter === 'pending' && !item.checked);
     const matchesCategories =
-      selectedCategories.length === 0 ||
-      selectedCategories.every((category) => item.categories.includes(category));
+      filters.selectedCategories.length === 0 ||
+      filters.selectedCategories.every((category) => item.categories.includes(category));
 
     return matchesSearch && matchesFavorites && matchesPurchase && matchesCategories;
   });
   const hasActiveFilters =
-    searchTerm.trim() !== '' || favoritesOnly || selectedCategories.length > 0 || purchaseFilter !== 'all';
+    filters.searchTerm.trim() !== '' ||
+    filters.favoritesOnly ||
+    filters.selectedCategories.length > 0 ||
+    filters.purchaseFilter !== 'all';
 
   return (
     <Shell>
@@ -323,22 +453,19 @@ function ChecklistApp() {
       </form>
 
       <FilterBar
-        searchTerm={searchTerm}
-        selectedCategories={selectedCategories}
-        favoritesOnly={favoritesOnly}
-        purchaseFilter={purchaseFilter}
+        searchTerm={filters.searchTerm}
+        selectedCategories={filters.selectedCategories}
+        favoritesOnly={filters.favoritesOnly}
+        purchaseFilter={filters.purchaseFilter}
         allCategories={allCategories}
         totalCount={items.length}
         visibleCount={filteredItems.length}
-        onSearchChange={setSearchTerm}
-        onCategoriesChange={setSelectedCategories}
-        onFavoritesOnlyChange={setFavoritesOnly}
-        onPurchaseFilterChange={setPurchaseFilter}
+        onSearchChange={(searchTerm) => updateFilters({ searchTerm })}
+        onCategoriesChange={(selectedCategories) => updateFilters({ selectedCategories })}
+        onFavoritesOnlyChange={(favoritesOnly) => updateFilters({ favoritesOnly })}
+        onPurchaseFilterChange={(purchaseFilter) => updateFilters({ purchaseFilter })}
         onClear={() => {
-          setSearchTerm('');
-          setSelectedCategories([]);
-          setFavoritesOnly(false);
-          setPurchaseFilter('all');
+          updateFilters(defaultFilters);
         }}
       />
 
@@ -364,7 +491,32 @@ function ChecklistApp() {
           />
         ))}
       </main>
+
+      <PresenceLayer users={presenceUsers} />
     </Shell>
+  );
+}
+
+function PresenceLayer({ users }) {
+  if (users.length === 0) return null;
+
+  return (
+    <div className="presence-layer" aria-hidden="true">
+      {users.map((presence) => (
+        <div
+          className="presence-cursor"
+          key={presence.uid}
+          style={{
+            '--cursor-color': presence.color,
+            left: `${presence.x * 100}%`,
+            top: `${presence.y * 100}%`,
+          }}
+        >
+          <div className="presence-pointer" />
+          <span>{presence.label || presence.name || presence.email}</span>
+        </div>
+      ))}
+    </div>
   );
 }
 

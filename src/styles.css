@@ -348,6 +348,47 @@ input:focus {
   gap: 8px;
 }
 
+.presence-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  pointer-events: none;
+}
+
+.presence-cursor {
+  position: absolute;
+  transform: translate(2px, 2px);
+  display: grid;
+  gap: 4px;
+}
+
+.presence-pointer {
+  width: 0;
+  height: 0;
+  border-left: 9px solid var(--cursor-color);
+  border-top: 9px solid transparent;
+  border-bottom: 9px solid transparent;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.2));
+  transform: rotate(-25deg);
+}
+
+.presence-cursor span {
+  width: max-content;
+  max-width: 140px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 999px;
+  background: var(--cursor-color);
+  color: #201f1b;
+  box-shadow: 0 8px 20px rgba(43, 39, 31, 0.16);
+  font-size: 0.75rem;
+  font-weight: 900;
+  line-height: 1;
+  overflow: hidden;
+  padding: 6px 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .item-list {
   display: grid;
   gap: 10px;

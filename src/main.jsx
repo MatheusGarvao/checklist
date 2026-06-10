@@ -82,6 +82,7 @@ function ChecklistApp() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategories, setSelectedCategories] = useState([]);
   const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [purchaseFilter, setPurchaseFilter] = useState('all');
   const [openItemId, setOpenItemId] = useState(null);
   const [error, setError] = useState('');
 
@@ -216,14 +217,18 @@ function ChecklistApp() {
   const filteredItems = items.filter((item) => {
     const matchesSearch = item.name.toLowerCase().includes(searchTerm.trim().toLowerCase());
     const matchesFavorites = !favoritesOnly || item.links.some((link) => link.favorite);
+    const matchesPurchase =
+      purchaseFilter === 'all' ||
+      (purchaseFilter === 'bought' && item.checked) ||
+      (purchaseFilter === 'pending' && !item.checked);
     const matchesCategories =
       selectedCategories.length === 0 ||
       selectedCategories.every((category) => item.categories.includes(category));
 
-    return matchesSearch && matchesFavorites && matchesCategories;
+    return matchesSearch && matchesFavorites && matchesPurchase && matchesCategories;
   });
   const hasActiveFilters =
-    searchTerm.trim() !== '' || favoritesOnly || selectedCategories.length > 0;
+    searchTerm.trim() !== '' || favoritesOnly || selectedCategories.length > 0 || purchaseFilter !== 'all';
 
   return (
     <Shell>
@@ -257,14 +262,14 @@ function ChecklistApp() {
         <input
           value={newItemName}
           onChange={(event) => setNewItemName(event.target.value)}
-          placeholder="Novo item"
-          aria-label="Novo item"
+          placeholder="Novo item (obrigatorio)"
+          aria-label="Novo item obrigatorio"
         />
         <CategoryInput
           value={newItemCategories}
           suggestions={allCategories}
           onChange={setNewItemCategories}
-          placeholder="Categorias"
+          placeholder="Categorias (opcional)"
         />
         <button className="primary-action compact" type="submit">
           <Plus size={18} />
@@ -276,16 +281,19 @@ function ChecklistApp() {
         searchTerm={searchTerm}
         selectedCategories={selectedCategories}
         favoritesOnly={favoritesOnly}
+        purchaseFilter={purchaseFilter}
         allCategories={allCategories}
         totalCount={items.length}
         visibleCount={filteredItems.length}
         onSearchChange={setSearchTerm}
         onCategoriesChange={setSelectedCategories}
         onFavoritesOnlyChange={setFavoritesOnly}
+        onPurchaseFilterChange={setPurchaseFilter}
         onClear={() => {
           setSearchTerm('');
           setSelectedCategories([]);
           setFavoritesOnly(false);
+          setPurchaseFilter('all');
         }}
       />
 
@@ -319,16 +327,19 @@ function FilterBar({
   searchTerm,
   selectedCategories,
   favoritesOnly,
+  purchaseFilter,
   allCategories,
   totalCount,
   visibleCount,
   onSearchChange,
   onCategoriesChange,
   onFavoritesOnlyChange,
+  onPurchaseFilterChange,
   onClear,
 }) {
   const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
-  const hasActiveFilters = searchTerm.trim() !== '' || favoritesOnly || selectedCategories.length > 0;
+  const hasActiveFilters =
+    searchTerm.trim() !== '' || favoritesOnly || selectedCategories.length > 0 || purchaseFilter !== 'all';
 
   function toggleCategory(category) {
     if (selectedCategories.includes(category)) {
@@ -386,6 +397,24 @@ function FilterBar({
         <Star size={18} />
         Favoritos
       </button>
+
+      <div className="status-filter" aria-label="Filtro de compra">
+        <button
+          className={`secondary-action filter-button ${purchaseFilter === 'bought' ? 'active' : ''}`}
+          type="button"
+          onClick={() => onPurchaseFilterChange(purchaseFilter === 'bought' ? 'all' : 'bought')}
+        >
+          <Check size={18} />
+          Comprados
+        </button>
+        <button
+          className={`secondary-action filter-button ${purchaseFilter === 'pending' ? 'active' : ''}`}
+          type="button"
+          onClick={() => onPurchaseFilterChange(purchaseFilter === 'pending' ? 'all' : 'pending')}
+        >
+          Pendentes
+        </button>
+      </div>
 
       {hasActiveFilters && (
         <button className="icon-button with-label" type="button" onClick={onClear} title="Limpar filtros">

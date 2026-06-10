@@ -62,6 +62,27 @@ function normalizeCategories(categories = []) {
   );
 }
 
+function normalizeValue(value) {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) && numericValue >= 0 ? numericValue : 0;
+}
+
+function parseCurrencyInput(value) {
+  const cleanValue = value.replace(/[^\d,.-]/g, '');
+  const normalized = cleanValue.includes(',')
+    ? cleanValue.replace(/\./g, '').replace(',', '.')
+    : cleanValue.replace(/,/g, '');
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+}
+
+function formatCurrency(value) {
+  return normalizeValue(value).toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  });
+}
+
 function App() {
   if (!firebaseReady) {
     return <SetupMissing />;
@@ -78,6 +99,7 @@ function ChecklistApp() {
   const [items, setItems] = useState([]);
   const [itemsLoading, setItemsLoading] = useState(true);
   const [newItemName, setNewItemName] = useState('');
+  const [newItemValue, setNewItemValue] = useState('');
   const [newItemCategories, setNewItemCategories] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategories, setSelectedCategories] = useState([]);
@@ -116,6 +138,7 @@ function ChecklistApp() {
             ...itemDoc.data(),
             links: normalizeLinks(itemDoc.data().links),
             categories: normalizeCategories(itemDoc.data().categories),
+            value: normalizeValue(itemDoc.data().value),
           })),
         );
         setItemsLoading(false);
@@ -144,6 +167,7 @@ function ChecklistApp() {
 
     await addDoc(collection(db, 'items'), {
       name,
+      value: parseCurrencyInput(newItemValue),
       categories: normalizeCategories(newItemCategories),
       checked: false,
       links: [],
@@ -151,6 +175,7 @@ function ChecklistApp() {
       updatedAt: serverTimestamp(),
     });
     setNewItemName('');
+    setNewItemValue('');
     setNewItemCategories([]);
   }
 
@@ -211,6 +236,11 @@ function ChecklistApp() {
 
   const boughtCount = items.filter((item) => item.checked).length;
   const totalLinks = items.reduce((total, item) => total + item.links.length, 0);
+  const estimatedValue = items.reduce((total, item) => total + normalizeValue(item.value), 0);
+  const spentValue = items.reduce(
+    (total, item) => total + (item.checked ? normalizeValue(item.value) : 0),
+    0,
+  );
   const allCategories = Array.from(
     new Set(items.flatMap((item) => normalizeCategories(item.categories))),
   ).sort((a, b) => a.localeCompare(b, 'pt-BR'));
@@ -256,6 +286,14 @@ function ChecklistApp() {
           <strong>{totalLinks}</strong>
           <span>links</span>
         </div>
+        <div className="money-stat">
+          <strong>{formatCurrency(estimatedValue)}</strong>
+          <span>estimado</span>
+        </div>
+        <div className="money-stat">
+          <strong>{formatCurrency(spentValue)}</strong>
+          <span>gasto</span>
+        </div>
       </section>
 
       <form className="add-item-form" onSubmit={handleAddItem}>
@@ -264,6 +302,13 @@ function ChecklistApp() {
           onChange={(event) => setNewItemName(event.target.value)}
           placeholder="Novo item (obrigatorio)"
           aria-label="Novo item obrigatorio"
+        />
+        <input
+          className="value-input"
+          value={newItemValue}
+          onChange={(event) => setNewItemValue(event.target.value)}
+          placeholder="Valor (opcional)"
+          aria-label="Valor opcional"
         />
         <CategoryInput
           value={newItemCategories}
@@ -455,14 +500,20 @@ function SetupMissing() {
 function ItemRow({ item, isOpen, categorySuggestions, onToggleOpen, onUpdate, onRemove }) {
   const [draftName, setDraftName] = useState(item.name);
   const favoriteCount = item.links.filter((link) => link.favorite).length;
+  const [draftValue, setDraftValue] = useState(item.value ? formatCurrency(item.value) : '');
 
   useEffect(() => {
     setDraftName(item.name);
   }, [item.name]);
 
+  useEffect(() => {
+    setDraftValue(item.value ? formatCurrency(item.value) : '');
+  }, [item.value]);
+
   function commitUpdate(patch) {
     onUpdate({
       categories: normalizeCategories(item.categories),
+      value: normalizeValue(item.value),
       ...patch,
     });
   }
@@ -497,6 +548,19 @@ function ItemRow({ item, isOpen, categorySuggestions, onToggleOpen, onUpdate, on
             if (!name) setDraftName(item.name);
           }}
           aria-label="Nome do item"
+        />
+
+        <input
+          className="item-value-input"
+          value={draftValue}
+          onChange={(event) => setDraftValue(event.target.value)}
+          onBlur={() => {
+            const nextValue = parseCurrencyInput(draftValue);
+            commitUpdate({ value: nextValue });
+            setDraftValue(nextValue ? formatCurrency(nextValue) : '');
+          }}
+          placeholder="R$ 0,00"
+          aria-label="Valor do item"
         />
 
         <div className="item-meta">

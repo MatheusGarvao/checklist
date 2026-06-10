@@ -279,22 +279,22 @@ function ChecklistApp() {
         snapshot.docs
           .map((presenceDoc) => ({ id: presenceDoc.id, ...presenceDoc.data() }))
           .filter((presence) => presence.online)
-        .filter((presence) => {
-          const lastSeen = presence.updatedAt?.toMillis?.();
-          return !lastSeen || now - lastSeen < 45000;
-        })
-        .map((presence) => ({
-          ...presence,
-          activity:
-            presence.activity?.itemId && presence.activity?.text
-              ? {
+          .filter((presence) => {
+            const lastSeen = presence.updatedAt?.toMillis?.();
+            return !lastSeen || now - lastSeen < 45000;
+          })
+          .map((presence) => ({
+            ...presence,
+            activity:
+              presence.activity?.itemId && presence.activity?.text
+                ? {
                   itemId: presence.activity.itemId,
                   text: presence.activity.text,
                 }
-              : null,
-          x: Math.min(Math.max(Number(presence.x) || 0, 0), 1),
-          y: Math.min(Math.max(Number(presence.y) || 0, 0), 1),
-        })),
+                : null,
+            x: Math.min(Math.max(Number(presence.x) || 0, 0), 1),
+            y: Math.min(Math.max(Number(presence.y) || 0, 0), 1),
+          })),
       );
     });
   }, [db, isAllowedUser, user]);
@@ -320,7 +320,7 @@ function ChecklistApp() {
           updatedAt: serverTimestamp(),
         },
         { merge: true },
-      ).catch(() => {});
+      ).catch(() => { });
     }, 250);
 
     return () => window.clearTimeout(draftTimer);
@@ -350,7 +350,7 @@ function ChecklistApp() {
           ...patch,
         },
         { merge: true },
-      ).catch(() => {});
+      ).catch(() => { });
     };
     presenceWriterRef.current = writePresence;
 
@@ -386,7 +386,7 @@ function ChecklistApp() {
           updatedAt: serverTimestamp(),
         },
         { merge: true },
-      ).catch(() => {});
+      ).catch(() => { });
     };
   }, [db, isAllowedUser, sessionId, user]);
 
@@ -683,11 +683,11 @@ function ChecklistApp() {
   const currentProfile = getPresenceProfile(user.email);
   const currentActivityHighlight = currentActivity?.itemId
     ? {
-        ...currentActivity,
-        sessionId,
-        label: currentProfile.label,
-        color: currentProfile.accentColor,
-      }
+      ...currentActivity,
+      sessionId,
+      label: currentProfile.label,
+      color: currentProfile.accentColor,
+    }
     : null;
   const activityHighlights = [
     ...(currentActivityHighlight ? [currentActivityHighlight] : []),
@@ -1026,9 +1026,8 @@ function FilterBar({
 
       <div className="favorite-filter" aria-label="Filtro de favoritos">
         <button
-          className={`secondary-action filter-button favorite-filter-button matheus ${
-            favoriteFilters.includes('matheus') ? 'active' : ''
-          }`}
+          className={`secondary-action filter-button favorite-filter-button matheus ${favoriteFilters.includes('matheus') ? 'active' : ''
+            }`}
           type="button"
           onClick={() => toggleFavoriteFilter('matheus')}
         >
@@ -1036,9 +1035,8 @@ function FilterBar({
           Matheus
         </button>
         <button
-          className={`secondary-action filter-button favorite-filter-button aly ${
-            favoriteFilters.includes('aly') ? 'active' : ''
-          }`}
+          className={`secondary-action filter-button favorite-filter-button aly ${favoriteFilters.includes('aly') ? 'active' : ''
+            }`}
           type="button"
           onClick={() => toggleFavoriteFilter('aly')}
         >
@@ -1239,9 +1237,8 @@ function ItemRow({
 
   return (
     <article
-      className={`item-row ${item.checked ? 'is-checked' : ''} ${
-        activityHighlights.length > 0 ? 'has-activity' : ''
-      }`}
+      className={`item-row ${item.checked ? 'is-checked' : ''} ${activityHighlights.length > 0 ? 'has-activity' : ''
+        }`}
       style={activityStyle}
     >
       <div className="item-summary">
@@ -1335,19 +1332,20 @@ function ItemRow({
         </button>
       </div>
 
-      {activityHighlights.length > 0 && (
-        <div className="activity-badges">
-          {activityHighlights.map((activity) => (
-            <span
-              className="activity-badge"
-              key={`${activity.sessionId}-${activity.text}`}
-              style={{ '--activity-color': activity.color }}
-            >
-              {activity.label} está {activity.text}
-            </span>
-          ))}
-        </div>
-      )}
+      <div
+        className={`activity-badges ${activityHighlights.length === 0 ? 'is-empty' : ''}`}
+        aria-hidden={activityHighlights.length === 0}
+      >
+        {activityHighlights.map((activity) => (
+          <span
+            className="activity-badge"
+            key={`${activity.sessionId}-${activity.text}`}
+            style={{ '--activity-color': activity.color }}
+          >
+            {activity.label} está {activity.text}
+          </span>
+        ))}
+      </div>
 
       {isDeleteConfirmOpen && (
         <div className="delete-confirmation">

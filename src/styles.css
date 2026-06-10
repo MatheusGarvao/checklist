@@ -716,10 +716,17 @@ input:focus {
 }
 
 .activity-badges {
+  min-height: 38px;
   display: flex;
+  align-items: center;
   flex-wrap: wrap;
   gap: 8px;
   padding: 0 12px 10px 64px;
+}
+
+.activity-badges.is-empty {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .activity-badge {

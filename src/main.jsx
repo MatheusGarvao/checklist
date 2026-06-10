@@ -636,7 +636,9 @@ function PresenceLayer({ users }) {
             top: `${presence.y * 100}%`,
           }}
         >
-          <div className="presence-pointer" />
+          <svg className="presence-pointer" viewBox="0 0 24 30" aria-hidden="true">
+            <path d="M3 2L20 18L12 19.2L8.4 28L3 2Z" />
+          </svg>
           <span>{presence.label || presence.name || presence.email}</span>
         </div>
       ))}
